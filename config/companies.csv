@@ -1,0 +1,11 @@
+ticker,company_name,aliases,sector,products,risks
+AZN.L,AstraZeneca plc,AstraZeneca|AstraZeneca plc|AZN.L|AZN,Pharmaceuticals,Prescription medicines including oncology cardiovascular renal respiratory and rare disease medicines,Drug trial regulatory approval patent and pricing risks
+HSBA.L,HSBC Holdings plc,HSBC|HSBC Holdings|HSBC Holdings plc|HSBA.L|HSBA,Banking,Retail commercial and investment banking services,Credit market interest rate regulatory and conduct risks
+GSK.L,GSK plc,GSK|GSK plc|GlaxoSmithKline|GSK.L,Pharmaceuticals,Vaccines specialty medicines and general medicines,Drug trial regulatory approval patent and pricing risks
+RIO.L,Rio Tinto plc,Rio Tinto|Rio Tinto plc|RIO.L|RIO,Mining,Iron ore aluminium copper and minerals,Commodity price operational environmental and regulatory risks
+VOD.L,Vodafone Group plc,Vodafone|Vodafone Group|Vodafone Group plc|VOD.L|VOD,Telecommunications,Mobile fixed broadband and digital communications services,Competition regulation spectrum and infrastructure investment risks
+NG.L,National Grid plc,National Grid|National Grid plc|NG.L|NG.,Utilities,Electricity and gas transmission and distribution networks,Regulatory infrastructure energy transition and financing risks
+REL.L,RELX plc,RELX|RELX plc|REL.L|REL,Analytics and information services,Scientific legal risk and business analytics products,Technology regulation data privacy and subscription demand risks
+HLMA.L,Halma plc,Halma|Halma plc|HLMA.L|HLMA,Safety technology,Safety health and environmental technology products,Industrial demand regulation supply chain and acquisition integration risks
+SN.L,Smith & Nephew plc,Smith & Nephew|Smith and Nephew|Smith & Nephew plc|SN.L|SN.,Medical technology,Orthopaedics sports medicine wound care and surgical devices,Healthcare demand regulation reimbursement and product quality risks
+ITRK.L,Intertek Group plc,Intertek|Intertek Group|Intertek Group plc|ITRK.L|ITRK,Testing inspection and certification,Assurance testing inspection and certification services,Industrial demand regulation reputation and global trade risks
