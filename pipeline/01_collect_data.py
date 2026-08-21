@@ -46,6 +46,8 @@ def find_matching_company(title: str, companies: list[Company]):
                 matches.append(company)
                 break
 
+    # A multi-company headline may have different sentiment implications for each company,
+    # so retain only headlines that map clearly to one company.
     if len(matches) == 1:
         return matches[0]
 
@@ -123,3 +125,5 @@ def main():
 # This means that, if this file was run directly, call main().
 if __name__ == "__main__":
     main()
+
+
