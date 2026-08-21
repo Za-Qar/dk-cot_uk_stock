@@ -1,8 +1,9 @@
 from uk_dkcot.config import END_DATE, START_DATE, load_companies, Company, RAW_DATA_DIR
 from google.cloud import bigquery
-from datetime import date
+from datetime import date, timedelta
 import re
 import pandas as pd
+import yfinance as yf
 
 DRY_RUN = False
 GDELT_QUERY = """
@@ -46,17 +47,81 @@ def find_matching_company(title: str, companies: list[Company]):
                 matches.append(company)
                 break
 
-    # A multi-company headline may have different sentiment implications for each company,
-    # so retain only headlines that map clearly to one company.
+    # A multi-company headline may have different sentiment implications for each company, so retain only headlines that map clearly to one company.
     if len(matches) == 1:
         return matches[0]
 
     return None
 
+def collect_prices(companies):
+    """Collect and save daily prices for all companies."""
 
-def main():
-    """Load and display the configured companies."""
-    companies = load_companies()
+    output_path = RAW_DATA_DIR / "yfinance_prices.csv"
+
+    if output_path.exists():
+        print(f"Prices already exist; skipping: {output_path}")
+        return
+
+    frames = []
+    final_date = date.fromisoformat(END_DATE) + timedelta(days=1)
+
+    for company in companies:
+        print(f"Downloading prices for {company.ticker}")
+
+        company_prices = yf.download(
+            company.ticker,
+            start=START_DATE,
+            end=final_date.isoformat(),
+            auto_adjust=False,
+            progress=False,
+            multi_level_index=False,
+        )
+
+        if company_prices.empty:
+            continue
+
+        company_prices = company_prices.reset_index()
+        company_prices = company_prices.rename(
+            columns={
+                "Date": "date",
+                "Open": "open",
+                "High": "high",
+                "Low": "low",
+                "Close": "close",
+                "Adj Close": "adj_close",
+                "Volume": "volume",
+            }
+        )
+
+        company_prices["ticker"] = company.ticker
+        company_prices["date"] = pd.to_datetime(
+            company_prices["date"]
+        ).dt.strftime("%Y-%m-%d")
+
+        frames.append(
+            company_prices[
+                [
+                    "date",
+                    "ticker",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "adj_close",
+                    "volume",
+                ]
+            ]
+        )
+
+    prices_df = pd.concat(frames, ignore_index=True)
+
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    prices_df.to_csv(output_path, index=False)
+
+    print(f"Saved {len(prices_df)} price rows to {output_path}")
+
+def collect_headlines(companies):
+    """Collect and save GDELT headlines."""
     alias_pattern = build_alias_pattern(companies)
 
     bigquery_client = bigquery.Client(project="uk-dkcot")
@@ -91,9 +156,6 @@ def main():
     rows = query_job.result()
     headlines = []
 
-    print("---------------------Here:")
-    print(rows)
-
     for row in rows:
         title = row.title.strip()
         company = find_matching_company(title, companies)
@@ -121,9 +183,22 @@ def main():
     print(f"Saved {len(headlines_df)} headlines to {output_path}")
 
 
+def main():
+    """Collect the raw headline and price datasets."""
+
+    companies = load_companies()
+    headlines_path = RAW_DATA_DIR / "gdelt_headlines.csv"
+
+    if headlines_path.exists():
+        print(f"Headlines already exist; skipping: {headlines_path}")
+    else:
+        collect_headlines(companies)
+
+    collect_prices(companies)
+
+
 # __name__ is a special variable automatically created by Python
 # This means that, if this file was run directly, call main().
 if __name__ == "__main__":
     main()
-
 
