@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+dkcot_uk_stocks.egg-info/PKG-INFO
+dkcot_uk_stocks.egg-info/SOURCES.txt
+dkcot_uk_stocks.egg-info/dependency_links.txt
+dkcot_uk_stocks.egg-info/requires.txt
+dkcot_uk_stocks.egg-info/top_level.txt
+uk_dkcot/__init__.py
+uk_dkcot/config.py
