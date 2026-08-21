@@ -1,7 +1,10 @@
-from uk_dkcot.config import END_DATE, START_DATE, load_companies, Company
+from uk_dkcot.config import END_DATE, START_DATE, load_companies, Company, RAW_DATA_DIR
 from google.cloud import bigquery
 from datetime import date
+import re
+import pandas as pd
 
+DRY_RUN = False
 GDELT_QUERY = """
     SELECT
         date,
@@ -26,11 +29,28 @@ def build_alias_pattern(companies: list[Company]):
 
     # The longest first so more specific names match before shorter ones. This helps avoid short aliases accidentally matching inside longer text first.
     ordered_aliases = sorted(aliases, key=len, reverse=True)
-    print("-------------------------here:")
-    print(ordered_aliases)
     joined_aliases = "|".join(ordered_aliases)
 
     return f"(^|[^a-z0-9])({joined_aliases})([^a-z0-9]|$)"
+
+def find_matching_company(title: str, companies: list[Company]):
+    """Return the one company mentioned in the headline."""
+
+    matches = []
+
+    for company in companies:
+        for alias in company.aliases:
+             pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
+
+             if re.search(pattern, title, re.IGNORECASE):
+                matches.append(company)
+                break
+
+    if len(matches) == 1:
+        return matches[0]
+
+    return None
+
 
 def main():
     """Load and display the configured companies."""
@@ -40,8 +60,9 @@ def main():
     bigquery_client = bigquery.Client(project="uk-dkcot")
 
     query_config = bigquery.QueryJobConfig(
-        dry_run=True,
-        use_query_cache=False,
+        dry_run=DRY_RUN,
+        use_query_cache=not DRY_RUN,
+        maximum_bytes_billed=30_000_000_000,
         query_parameters=[
             bigquery.ScalarQueryParameter(
                 "start_date", "DATE", date.fromisoformat(START_DATE)
@@ -60,8 +81,42 @@ def main():
         job_config=query_config,
     )
 
-    gigabytes = query_job.total_bytes_processed / 1_000_000_000
-    print(f"Dry run: {gigabytes:.2f} GB will be processed")
+    if DRY_RUN:
+        gigabytes = query_job.total_bytes_processed / 1_000_000_000
+        print(f"Dry run: {gigabytes:.2f} GB will be processed")
+        return
+
+    rows = query_job.result()
+    headlines = []
+
+    print("---------------------Here:")
+    print(rows)
+
+    for row in rows:
+        title = row.title.strip()
+        company = find_matching_company(title, companies)
+
+        # Exclude headlines matching zero or multiple companies.
+        if company is None:
+            continue
+
+        headlines.append(
+            {
+                "published_at_utc": row.date.isoformat(),
+                "url": row.url,
+                "ticker": company.ticker,
+                "company_name": company.company_name,
+                "headline_text": title,
+            }
+        )
+
+    headlines_df = pd.DataFrame(headlines)
+
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = RAW_DATA_DIR / "gdelt_headlines.csv"
+    headlines_df.to_csv(output_path, index=False)
+
+    print(f"Saved {len(headlines_df)} headlines to {output_path}")
 
 
 # __name__ is a special variable automatically created by Python
