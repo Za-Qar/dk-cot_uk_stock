@@ -1,4 +1,0 @@
-google-cloud-bigquery>=3.25
-pandas>=2.2
-requests>=2.32
-yfinance>=0.2
