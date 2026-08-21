@@ -63,7 +63,9 @@ def collect_prices(companies):
         return
 
     frames = []
-    final_date = date.fromisoformat(END_DATE) + timedelta(days=1)
+    # Include the first 2026 trading day needed to execute 31 December headlines.
+    # yfinance treats its end date as exclusive.
+    final_date = date.fromisoformat(END_DATE) + timedelta(days=3)
 
     for company in companies:
         print(f"Downloading prices for {company.ticker}")
