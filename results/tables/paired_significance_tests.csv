@@ -1,7 +1,7 @@
 model_a,model_b,a_correct_b_wrong,b_correct_a_wrong,p_value,significant_at_0_05
-FinBERT,DK-CoT (none),26,82,6.141302934773195e-08,True
-FinBERT,DK-CoT (sector),28,82,2.519412514630621e-07,True
-FinBERT,DK-CoT (firm),27,81,1.9074127708662275e-07,True
-DK-CoT (none),DK-CoT (sector),20,18,0.8714146793645341,False
-DK-CoT (none),DK-CoT (firm),21,19,0.8746293123804207,False
-DK-CoT (sector),DK-CoT (firm),18,18,1.0,False
+FinBERT,DK-CoT (none),34,73,0.0002063746741923057,True
+FinBERT,DK-CoT (sector),31,75,2.2954512916817195e-05,True
+FinBERT,DK-CoT (firm),29,76,5.051645602475529e-06,True
+DK-CoT (none),DK-CoT (sector),16,21,0.5113757815852296,False
+DK-CoT (none),DK-CoT (firm),16,24,0.26818725105476915,False
+DK-CoT (sector),DK-CoT (firm),16,19,0.7358788008568808,False
