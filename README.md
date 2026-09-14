@@ -21,21 +21,22 @@ Generated datasets belong in `data/raw` and `data/processed` and are not committ
 
 ## Run the completed pipeline
 
-Run each stage from the project root:
+Run each stage from the project root, in this order. Stages 02 and 04 are the
+interactive cleaning and labelling notebooks.
 
-```powershell
-python pipeline/01_collect_data.py
-python pipeline/03_align_prices.py
-python pipeline/05_finbert.py
-python pipeline/06_dkcot.py
-python pipeline/07_evaluate.py
-python pipeline/08_backtest.py
-```
+1. `python pipeline/01_collect_data.py`
+2. `pipeline/02_clean_headlines.ipynb`
+3. `python pipeline/03_align_prices.py`
+4. `pipeline/04_label_sentiment.ipynb`
+5. `python pipeline/05_finbert.py`
+6. `python pipeline/06_dkcot.py` (needs a CUDA GPU)
+7. `python pipeline/07_evaluate.py`
+8. `python pipeline/08_backtest.py`
+9. `python pipeline/09_technical_checks.py`
 
-The two notebooks contain the interactive cleaning and labelling stages:
-
-- `pipeline/02_clean_headlines.ipynb`
-- `pipeline/04_label_sentiment.ipynb`
+Add `--rerun-models` to stage 09 to repeat the FinBERT and DK-CoT predictions for
+the gold headlines and compare them with the saved ones. The result is kept in
+`results/tables/model_rerun_checks.csv` and reused by later runs.
 
 Final numerical tables are written to `results/tables` and
 `data/processed/backtest_results.csv`. Report-ready figures are written to

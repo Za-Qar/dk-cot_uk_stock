@@ -4,10 +4,10 @@ import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from uk_dkcot.config import PROCESSED_DATA_DIR
+from uk_dkcot.config import FINBERT_MODEL_ID, PROCESSED_DATA_DIR
 
 
-MODEL_NAME = "ProsusAI/finbert"
+MODEL_NAME = FINBERT_MODEL_ID
 BATCH_SIZE = 32
 
 
@@ -56,6 +56,16 @@ def predict_headlines(headlines, tokenizer, model, device):
     return pd.DataFrame(predictions)
 
 
+def load_model(device):
+    """Load the FinBERT tokenizer and model for inference."""
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+    model.to(device)
+    model.eval()
+    return tokenizer, model
+
+
 def main():
     """Generate and save FinBERT predictions for every cleaned headline."""
 
@@ -71,11 +81,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     print(f"Loading model: {MODEL_NAME}")
-
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
-    model.to(device)
-    model.eval()
+    tokenizer, model = load_model(device)
 
     predictions_df = predict_headlines(
         headlines_df,

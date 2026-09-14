@@ -6,19 +6,17 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 
-from uk_dkcot.config import PROCESSED_DATA_DIR, PROJECT_ROOT
+from uk_dkcot.config import (
+    MODEL_VARIANTS,
+    PROCESSED_DATA_DIR,
+    PROJECT_ROOT,
+    RANDOM_SEED,
+)
 
 
 LABELS = ["negative", "neutral", "positive"]
 BOOTSTRAP_ITERATIONS = 2_000
-RANDOM_SEED = 2025
-
-MODEL_VARIANTS = [
-    ("FinBERT", "ProsusAI/finbert", "none"),
-    ("DK-CoT (none)", "Qwen/Qwen2.5-3B-Instruct", "none"),
-    ("DK-CoT (sector)", "Qwen/Qwen2.5-3B-Instruct", "sector"),
-    ("DK-CoT (firm)", "Qwen/Qwen2.5-3B-Instruct", "firm"),
-]
+GOLD_COLUMNS = ["headline_id", "label_gold", "annotator_pass", "qa_flag"]
 
 
 def calculate_metrics(gold_labels, predictions):
@@ -77,6 +75,23 @@ def exact_mcnemar_test(first_correct, second_correct):
     return first_only, second_only, min(1.0, 2 * lower_tail)
 
 
+def holm_adjust(p_values):
+    """Return Holm-adjusted p-values for one family of tests."""
+
+    p_values = np.asarray(p_values, dtype=float)
+    adjusted = np.empty_like(p_values)
+    running_maximum = 0.0
+
+    for rank, index in enumerate(np.argsort(p_values)):
+        running_maximum = max(
+            running_maximum,
+            (len(p_values) - rank) * p_values[index],
+        )
+        adjusted[index] = min(1.0, running_maximum)
+
+    return adjusted
+
+
 def load_evaluation_data():
     """Load gold labels and all four model prediction variants."""
 
@@ -84,13 +99,16 @@ def load_evaluation_data():
     finbert_df = pd.read_csv(PROCESSED_DATA_DIR / "finbert_predictions.csv")
     dkcot_df = pd.read_csv(PROCESSED_DATA_DIR / "dkcot_predictions.csv")
 
-    assert gold_df.columns.tolist() == [
-        "headline_id",
-        "label_gold",
-        "annotator_pass",
-    ]
+    assert gold_df.columns.tolist() == GOLD_COLUMNS
     assert gold_df["headline_id"].is_unique
     assert set(gold_df["label_gold"]) == set(LABELS)
+
+    first_pass_only = int(gold_df["annotator_pass"].ne(2).sum())
+    if first_pass_only:
+        print(
+            f"Warning: {first_pass_only} gold labels have not been through "
+            "the second annotation pass."
+        )
 
     predictions_df = pd.concat([finbert_df, dkcot_df], ignore_index=True)
     expected_keys = {
@@ -198,11 +216,14 @@ def compare_paired_predictions(paired_predictions):
                 "a_correct_b_wrong": first_only,
                 "b_correct_a_wrong": second_only,
                 "p_value": p_value,
-                "significant_at_0_05": p_value < 0.05,
             }
         )
 
-    return pd.DataFrame(rows)
+    # The pairwise tests form one family, so significance uses Holm-adjusted p-values.
+    significance_df = pd.DataFrame(rows)
+    significance_df["p_value_holm"] = holm_adjust(significance_df["p_value"])
+    significance_df["significant_at_0_05"] = significance_df["p_value_holm"] < 0.05
+    return significance_df
 
 
 def save_classification_figure(results_df, output_path):
@@ -280,7 +301,11 @@ def save_confusion_matrices(paired_predictions, output_path):
         axis.set_xlabel("Predicted label")
         axis.set_ylabel("Gold label")
 
-    figure.suptitle("Confusion matrices on the 300-headline sample", y=1.01)
+    headline_count = len(next(iter(paired_predictions.values())))
+    figure.suptitle(
+        f"Confusion matrices on the {headline_count}-headline sample",
+        y=1.01,
+    )
     figure.subplots_adjust(wspace=0.35, hspace=0.42, right=0.82)
     colour_axis = figure.add_axes([0.86, 0.2, 0.025, 0.6])
     figure.colorbar(

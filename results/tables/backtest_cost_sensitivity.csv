@@ -1,0 +1,33 @@
+model,model_id,knowledge_level,strategy,transaction_cost_bps,Sharpe_ratio,cumulative_return
+FinBERT,ProsusAI/finbert,none,long-only,0,0.9078512379136292,0.04568720670505089
+FinBERT,ProsusAI/finbert,none,long-only,5,0.3088232244405727,0.014478809045131547
+FinBERT,ProsusAI/finbert,none,long-only,10,-0.2887552230455171,-0.015803981052901928
+FinBERT,ProsusAI/finbert,none,long-only,20,-1.4732582370753902,-0.07370106202556903
+FinBERT,ProsusAI/finbert,none,long-short,0,-0.3292089725238841,-0.017993109599729662
+FinBERT,ProsusAI/finbert,none,long-short,5,-1.3281696022252376,-0.06730722587003202
+FinBERT,ProsusAI/finbert,none,long-short,10,-2.3121530362458276,-0.11415932827553132
+FinBERT,ProsusAI/finbert,none,long-short,20,-4.212360249625769,-0.20096024889257869
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-only,0,1.1724872064114484,0.0655327180101326
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-only,5,0.5568005287765986,0.029813277401181004
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-only,10,-0.05751980383350061,-0.0047159671717865725
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-only,20,-1.2757414053169727,-0.07036024292600063
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-short,0,-0.29577985160372156,-0.016842456259419936
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-short,5,-1.4128773337028206,-0.07327915792185336
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-short,10,-2.518927175374682,-0.12649452034965503
+DK-CoT (none),Qwen/Qwen2.5-3B-Instruct,none,long-short,20,-4.665680527953068,-0.22398220990579798
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-only,0,0.9083390732686006,0.052327680023572354
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-only,5,0.3113698794821813,0.016540525180923638
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-only,10,-0.2841264620601102,-0.018036762005490314
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-only,20,-1.4652851883752391,-0.08372301629486534
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-short,0,-0.507304150274625,-0.028692266826508606
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-short,5,-1.570475445371007,-0.08353524922078015
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-short,10,-2.623459538234609,-0.13529894315627966
+DK-CoT (sector),Qwen/Qwen2.5-3B-Instruct,sector,long-short,20,-4.672032290975624,-0.2302666107736724
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-only,0,1.238981790879441,0.06599549939600369
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-only,5,0.6124109633359786,0.03139620620690953
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-only,10,-0.013450235469876112,-0.002086769754893303
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-only,20,-1.2565533140854683,-0.06584583554393364
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-short,0,0.04421249957858769,0.0009565007502561063
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-short,5,-1.0504733219652194,-0.05517133178728073
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-short,10,-2.1394236208233575,-0.10816936692440371
+DK-CoT (firm),Qwen/Qwen2.5-3B-Instruct,firm,long-short,20,-4.270185223340368,-0.20546066331381518

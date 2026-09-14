@@ -1,0 +1,3 @@
+check,status,detail
+FinBERT predictions reproduce,pass,300 of 300 gold-headline labels identical
+DK-CoT predictions reproduce,warn,893 of 900 gold-headline labels identical (batches differ from the original run)

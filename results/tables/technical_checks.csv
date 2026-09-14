@@ -1,0 +1,18 @@
+check,status,detail
+no duplicate headlines,pass,"0 repeated (ticker, normalised headline) pairs"
+each headline matches only its own company,pass,"0 of 9,001 headlines fail the alias match"
+headline table has the specified fields,pass,missing: none; rows with empty fields: 0
+headlines cover the whole study period,warn,2025-06-14 to 2025-09-12 (90 days)
+price file is valid,pass,"10 tickers, 0 duplicate rows, 0 rows with missing or non-positive prices"
+no missing trading dates,warn,RIO.L missing 2025-10-27
+London time conversion,pass,London timestamps and dates recalculated from UTC
+next trading day rule,pass,"0 wrong trade dates, 0 wrong opening prices"
+no look-ahead,pass,0 headlines trade on or before their publication date
+one prediction per headline and variant,pass,"FinBERT 9,001 rows, DK-CoT 27,003 rows"
+DK-CoT responses parsed,warn,"52 unparsed responses set to neutral (none 15, sector 20, firm 17)"
+gold labels are complete,pass,"300 labels, 30 to 30 per company"
+gold sample reproduces from the seed,pass,"300 sampled headlines kept, 0 replaced as wrong-company"
+second annotation pass,warn,"0 of 300 labels checked twice, 0 changed"
+FinBERT predictions reproduce,pass,300 of 300 gold-headline labels identical
+DK-CoT predictions reproduce,warn,893 of 900 gold-headline labels identical (batches differ from the original run)
+output manifest,pass,SHA-256 recorded for 15 files

@@ -14,8 +14,26 @@ def create_headline_id(row):
     return hashlib.sha256(identifying_text.encode("utf-8")).hexdigest()
 
 
+def report_missing_price_dates(prices):
+    """Warn about trading dates that are missing for some tickers only."""
+
+    all_dates = set(prices["date"])
+
+    for ticker, ticker_prices in prices.groupby("ticker"):
+        missing_dates = sorted(all_dates - set(ticker_prices["date"]))
+        if missing_dates:
+            print(
+                f"Warning: {ticker} has no price on {', '.join(missing_dates)}; "
+                "its headlines move to the next date it does have."
+            )
+
+
 def align_company_headlines(headlines, prices):
-    """Assign each headline to the company's next available trading-day open."""
+    """Assign each headline to the next trading day's opening price.
+
+    This is the first trading day after the London publication date. The time
+    of day is not used, so a headline published before the open still waits.
+    """
 
     return pd.merge_asof(
         headlines.sort_values("headline_date_london"),
@@ -49,6 +67,7 @@ def main():
         headlines_df["published_at_london"].dt.tz_localize(None).dt.normalize()
     )
 
+    report_missing_price_dates(prices_df)
     prices_df["date"] = pd.to_datetime(prices_df["date"], errors="raise")
 
     aligned_companies = []

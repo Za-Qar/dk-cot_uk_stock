@@ -1,9 +1,11 @@
-from uk_dkcot.config import END_DATE, START_DATE, load_companies, Company, RAW_DATA_DIR
-from google.cloud import bigquery
-from datetime import date, timedelta
 import re
+from datetime import date, timedelta
+
 import pandas as pd
 import yfinance as yf
+from google.cloud import bigquery
+
+from uk_dkcot.config import END_DATE, RAW_DATA_DIR, START_DATE, Company, load_companies
 
 DRY_RUN = False
 GDELT_QUERY = """
@@ -28,8 +30,8 @@ def build_alias_pattern(companies: list[Company]):
         for alias in company.aliases:
             aliases.add(alias.lower())
 
-    # The longest first so more specific names match before shorter ones. This helps avoid short aliases accidentally matching inside longer text first.
-    ordered_aliases = sorted(aliases, key=len, reverse=True)
+    # Longest first, with ties sorted alphabetically so the pattern is identical on every run.
+    ordered_aliases = sorted(aliases, key=lambda alias: (-len(alias), alias))
     joined_aliases = "|".join(ordered_aliases)
 
     return f"(^|[^a-z0-9])({joined_aliases})([^a-z0-9]|$)"
@@ -41,9 +43,9 @@ def find_matching_company(title: str, companies: list[Company]):
 
     for company in companies:
         for alias in company.aliases:
-             pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
+            pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
 
-             if re.search(pattern, title, re.IGNORECASE):
+            if re.search(pattern, title, re.IGNORECASE):
                 matches.append(company)
                 break
 
@@ -80,6 +82,7 @@ def collect_prices(companies):
         )
 
         if company_prices.empty:
+            print(f"No prices returned for {company.ticker}")
             continue
 
         company_prices = company_prices.reset_index()
@@ -156,6 +159,7 @@ def collect_headlines(companies):
         return
 
     rows = query_job.result()
+    print(f"Query returned {rows.total_rows} rows")
     headlines = []
 
     for row in rows:

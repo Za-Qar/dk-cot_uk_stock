@@ -4,11 +4,15 @@ import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from uk_dkcot.config import PROCESSED_DATA_DIR, load_companies
+from uk_dkcot.config import (
+    DKCOT_MODEL_ID,
+    KNOWLEDGE_LEVELS,
+    PROCESSED_DATA_DIR,
+    load_companies,
+)
 
 
-MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
-KNOWLEDGE_LEVELS = ("none", "sector", "firm")
+MODEL_NAME = DKCOT_MODEL_ID
 BATCH_SIZE = 16
 MAX_NEW_TOKENS = 128
 OUTPUT_COLUMNS = [
@@ -78,7 +82,11 @@ Return only one JSON object with the fields Entity, Event, Impact, and Sentiment
 
 
 def parse_sentiment(raw_output):
-    """Extract a valid sentiment label from the model's JSON response."""
+    """Return the last Sentiment value in the response and whether one was found.
+
+    A regular expression is used rather than a JSON parser so that responses
+    wrapped in code fences or with small formatting errors are still read.
+    """
 
     matches = re.findall(
         r"[\"']?sentiment[\"']?\s*[:：]\s*[\"']?\s*(positive|neutral|negative)\b",
@@ -109,11 +117,13 @@ def load_model():
         low_cpu_mem_usage=True,
     ).to("cuda").eval()
 
-    # Greedy decoding makes repeated experiment runs deterministic.
+    # Greedy decoding removes sampling randomness. The model's default repetition
+    # penalty (1.05) is set explicitly because the saved predictions used it.
     model.generation_config.do_sample = False
     model.generation_config.temperature = None
     model.generation_config.top_p = None
     model.generation_config.top_k = None
+    model.generation_config.repetition_penalty = 1.05
 
     return tokenizer, model
 

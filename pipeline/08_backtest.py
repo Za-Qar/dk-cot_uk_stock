@@ -2,22 +2,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from uk_dkcot.config import PROCESSED_DATA_DIR, PROJECT_ROOT, RAW_DATA_DIR
+from uk_dkcot.config import (
+    MODEL_VARIANTS,
+    PROCESSED_DATA_DIR,
+    PROJECT_ROOT,
+    RANDOM_SEED,
+    RAW_DATA_DIR,
+)
 
 
 SENTIMENT_SCORES = {"negative": -1, "neutral": 0, "positive": 1}
+STRATEGIES = ["long-only", "long-short"]
 TRANSACTION_COST_BPS = 10
+COST_SENSITIVITY_BPS = [0, 5, 10, 20]
 BOOTSTRAP_ITERATIONS = 2_000
 BLOCK_LENGTH = 5
-RANDOM_SEED = 2025
 COMPANY_COUNT = 10
-
-MODEL_VARIANTS = [
-    ("FinBERT", "ProsusAI/finbert", "none"),
-    ("DK-CoT (none)", "Qwen/Qwen2.5-3B-Instruct", "none"),
-    ("DK-CoT (sector)", "Qwen/Qwen2.5-3B-Instruct", "sector"),
-    ("DK-CoT (firm)", "Qwen/Qwen2.5-3B-Instruct", "firm"),
-]
+BENCHMARK_NAME = "Buy and hold (equal weight)"
 
 
 def calculate_sharpe(daily_returns):
@@ -48,10 +49,10 @@ def block_bootstrap_intervals(daily_results, seed):
         sample = daily_results.iloc[indices]
         sharpe_values.append(calculate_sharpe(sample["net_return"]))
 
-        active_trades = sample["active_trades"].sum()
+        active_positions = sample["active_positions"].sum()
         hit_rate_values.append(
-            sample["correct_trades"].sum() / active_trades
-            if active_trades
+            sample["correct_positions"].sum() / active_positions
+            if active_positions
             else 0.0
         )
 
@@ -71,7 +72,27 @@ def load_predictions():
     return pd.concat([finbert_df, dkcot_df], ignore_index=True)
 
 
-def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
+def add_forward_returns(prices_df):
+    """Add each day's open-to-next-open return for every ticker."""
+
+    prices = prices_df.copy()
+    prices["date"] = pd.to_datetime(prices["date"])
+    prices = prices.sort_values(["ticker", "date"])
+    prices["next_open"] = prices.groupby("ticker")["open"].shift(-1)
+    prices["forward_return"] = prices["next_open"] / prices["open"] - 1
+    prices["date"] = prices["date"].dt.strftime("%Y-%m-%d")
+    return prices
+
+
+def create_benchmark_panel(prices):
+    """Hold every company long for the whole period as a passive comparison."""
+
+    panel = prices.copy()
+    panel["position"] = 1
+    return panel
+
+
+def create_daily_signal_panels(headlines_df, prices, predictions_df):
     """Aggregate headline sentiment and build one daily panel per model."""
 
     headline_keys = headlines_df[["headline_id", "ticker", "trade_date"]]
@@ -96,13 +117,6 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
             headline_count=("headline_id", "size"),
         )
     )
-
-    prices = prices_df.copy()
-    prices["date"] = pd.to_datetime(prices["date"])
-    prices = prices.sort_values(["ticker", "date"])
-    prices["next_open"] = prices.groupby("ticker")["open"].shift(-1)
-    prices["forward_return"] = prices["next_open"] / prices["open"] - 1
-    prices["date"] = prices["date"].dt.strftime("%Y-%m-%d")
 
     panels = {}
     output_rows = []
@@ -144,7 +158,7 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
     return panels, pd.concat(output_rows, ignore_index=True)
 
 
-def run_strategy(panel, strategy):
+def run_strategy(panel, strategy, cost_bps=TRANSACTION_COST_BPS):
     """Apply one strategy to a model's daily company-level signals."""
 
     tested = panel.copy().sort_values(["ticker", "date"])
@@ -163,17 +177,16 @@ def run_strategy(panel, strategy):
     tested["gross_return"] = (
         tested["strategy_position"] * tested["forward_return"].fillna(0)
     )
-    tested["transaction_cost"] = (
-        tested["turnover"] * TRANSACTION_COST_BPS / 10_000
-    )
+    tested["transaction_cost"] = tested["turnover"] * cost_bps / 10_000
     tested["net_return"] = tested["gross_return"] - tested["transaction_cost"]
 
+    # One row per company-day with an open position; hit rate is before costs.
     active = (
         tested["strategy_position"].ne(0)
         & tested["forward_return"].notna()
     )
-    tested["active_trade"] = active.astype(int)
-    tested["correct_trade"] = (
+    tested["active_position"] = active.astype(int)
+    tested["correct_position"] = (
         active
         & (tested["strategy_position"] * tested["forward_return"] > 0)
     ).astype(int)
@@ -185,8 +198,8 @@ def run_strategy(panel, strategy):
             gross_return=("gross_return", "sum"),
             transaction_cost=("transaction_cost", "sum"),
             net_return=("net_return", "sum"),
-            active_trades=("active_trade", "sum"),
-            correct_trades=("correct_trade", "sum"),
+            active_positions=("active_position", "sum"),
+            correct_positions=("correct_position", "sum"),
         )
         .sort_values("date")
     )
@@ -195,41 +208,86 @@ def run_strategy(panel, strategy):
     return tested, daily
 
 
-def evaluate_backtests(panels):
-    """Evaluate both trading rules for every sentiment model."""
+def summarise_backtest(tested, daily, seed):
+    """Return the performance metrics of one backtest."""
+
+    position_days = int(tested["active_position"].sum())
+    correct_positions = int(tested["correct_position"].sum())
+    gross_cumulative_return = (1 + daily["gross_return"]).prod() - 1
+
+    return {
+        "Sharpe_ratio": calculate_sharpe(daily["net_return"]),
+        **block_bootstrap_intervals(daily, seed),
+        "hit_rate": correct_positions / position_days if position_days else 0.0,
+        "cumulative_return": daily["cumulative_return"].iloc[-1],
+        "gross_Sharpe_ratio": calculate_sharpe(daily["gross_return"]),
+        "gross_cumulative_return": gross_cumulative_return,
+        "position_days": position_days,
+        "trading_days": len(daily),
+        "transaction_cost_bps": TRANSACTION_COST_BPS,
+    }
+
+
+def evaluate_backtests(panels, benchmark_panel):
+    """Evaluate both trading rules for every model, then the benchmark."""
 
     result_rows = []
     daily_curves = {}
     seed = RANDOM_SEED
 
     for name, model_id, knowledge_level in MODEL_VARIANTS:
-        for strategy in ["long-only", "long-short"]:
+        for strategy in STRATEGIES:
             tested, daily = run_strategy(panels[name], strategy)
-            active_trades = int(tested["active_trade"].sum())
-            correct_trades = int(tested["correct_trade"].sum())
-            intervals = block_bootstrap_intervals(daily, seed)
-            seed += 1
-
             result_rows.append(
                 {
                     "model": name,
                     "model_id": model_id,
                     "knowledge_level": knowledge_level,
                     "strategy": strategy,
-                    "Sharpe_ratio": calculate_sharpe(daily["net_return"]),
-                    **intervals,
-                    "hit_rate": (
-                        correct_trades / active_trades if active_trades else 0.0
-                    ),
-                    "cumulative_return": daily["cumulative_return"].iloc[-1],
-                    "active_trades": active_trades,
-                    "trading_days": len(daily),
-                    "transaction_cost_bps": TRANSACTION_COST_BPS,
+                    **summarise_backtest(tested, daily, seed),
                 }
             )
             daily_curves[(name, strategy)] = daily
+            seed += 1
+
+    # Evaluated last so the model rows keep the same bootstrap seeds.
+    tested, daily = run_strategy(benchmark_panel, "long-only")
+    result_rows.append(
+        {
+            "model": BENCHMARK_NAME,
+            "model_id": "buy_and_hold",
+            "knowledge_level": "none",
+            "strategy": "long-only",
+            **summarise_backtest(tested, daily, seed),
+        }
+    )
+    daily_curves[(BENCHMARK_NAME, "long-only")] = daily
 
     return pd.DataFrame(result_rows), daily_curves
+
+
+def evaluate_cost_sensitivity(panels):
+    """Recalculate each backtest's Sharpe ratio and return at several costs."""
+
+    rows = []
+
+    for name, model_id, knowledge_level in MODEL_VARIANTS:
+        for strategy in STRATEGIES:
+            for cost_bps in COST_SENSITIVITY_BPS:
+                _, daily = run_strategy(panels[name], strategy, cost_bps)
+                rows.append(
+                    {
+                        "model": name,
+                        "model_id": model_id,
+                        "knowledge_level": knowledge_level,
+                        "strategy": strategy,
+                        "transaction_cost_bps": cost_bps,
+                        "Sharpe_ratio": calculate_sharpe(daily["net_return"]),
+                        "cumulative_return": daily["cumulative_return"].iloc[-1],
+                    }
+                )
+
+    return pd.DataFrame(rows)
 
 
 def save_cumulative_return_figure(daily_curves, output_path):
@@ -239,7 +297,9 @@ def save_cumulative_return_figure(daily_curves, output_path):
     colours = ["#0B6E75", "#D17A22", "#4C78A8", "#8C564B"]
     figure, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-    for axis, strategy in zip(axes, ["long-only", "long-short"]):
+    benchmark = daily_curves[(BENCHMARK_NAME, "long-only")]
+
+    for axis, strategy in zip(axes, STRATEGIES):
         for colour, (name, _, _) in zip(colours, MODEL_VARIANTS):
             daily = daily_curves[(name, strategy)]
             axis.plot(
@@ -249,6 +309,14 @@ def save_cumulative_return_figure(daily_curves, output_path):
                 color=colour,
                 linewidth=1.7,
             )
+        axis.plot(
+            pd.to_datetime(benchmark["date"]),
+            benchmark["cumulative_return"] * 100,
+            label=BENCHMARK_NAME,
+            color="#777777",
+            linestyle="--",
+            linewidth=1.2,
+        )
         axis.axhline(0, color="#333333", linewidth=0.8)
         axis.set_title(strategy.title())
         axis.set_ylabel("Cumulative return (%)")
@@ -270,7 +338,7 @@ def save_backtest_metrics_figure(results_df, output_path):
     positions = np.arange(len(MODEL_VARIANTS))
     width = 0.36
 
-    for offset, strategy in [(-width / 2, "long-only"), (width / 2, "long-short")]:
+    for offset, strategy in zip([-width / 2, width / 2], STRATEGIES):
         subset = results_df.loc[results_df["strategy"] == strategy].set_index("model")
         subset = subset.loc[[item[0] for item in MODEL_VARIANTS]]
 
@@ -322,7 +390,9 @@ def save_backtest_metrics_figure(results_df, output_path):
 def main():
     """Create daily signals and backtest all model variants consistently."""
 
+    tables_directory = PROJECT_ROOT / "results" / "tables"
     figures_directory = PROJECT_ROOT / "results" / "figures"
+    tables_directory.mkdir(parents=True, exist_ok=True)
     figures_directory.mkdir(parents=True, exist_ok=True)
 
     headlines_df = pd.read_csv(
@@ -332,19 +402,26 @@ def main():
     predictions_df = load_predictions()
 
     assert headlines_df["headline_id"].is_unique
-    assert prices_df["ticker"].nunique() == 10
+    assert prices_df["ticker"].nunique() == COMPANY_COUNT
 
+    prices = add_forward_returns(prices_df)
     panels, daily_signals_df = create_daily_signal_panels(
         headlines_df,
-        prices_df,
+        prices,
         predictions_df,
     )
-    results_df, daily_curves = evaluate_backtests(panels)
+    results_df, daily_curves = evaluate_backtests(
+        panels,
+        create_benchmark_panel(prices),
+    )
+    sensitivity_df = evaluate_cost_sensitivity(panels)
 
     signals_path = PROCESSED_DATA_DIR / "daily_signals.csv"
     results_path = PROCESSED_DATA_DIR / "backtest_results.csv"
+    sensitivity_path = tables_directory / "backtest_cost_sensitivity.csv"
     daily_signals_df.to_csv(signals_path, index=False)
     results_df.to_csv(results_path, index=False)
+    sensitivity_df.to_csv(sensitivity_path, index=False)
 
     save_cumulative_return_figure(
         daily_curves,
@@ -358,6 +435,7 @@ def main():
     print(results_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
     print(f"\nSaved daily signals to {signals_path}")
     print(f"Saved backtest results to {results_path}")
+    print(f"Saved cost sensitivity to {sensitivity_path}")
     print(f"Saved figures to {figures_directory}")
 
 

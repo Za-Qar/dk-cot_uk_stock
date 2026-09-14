@@ -13,6 +13,19 @@ COMPANIES_PATH = PROJECT_ROOT / "config" / "companies.csv"
 
 START_DATE = "2025-01-01"
 END_DATE = "2025-12-31"
+RANDOM_SEED = 2025
+
+FINBERT_MODEL_ID = "ProsusAI/finbert"
+DKCOT_MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
+KNOWLEDGE_LEVELS = ("none", "sector", "firm")
+
+# Display name, model ID and knowledge level of every evaluated variant.
+MODEL_VARIANTS = [
+    ("FinBERT", FINBERT_MODEL_ID, "none"),
+    ("DK-CoT (none)", DKCOT_MODEL_ID, "none"),
+    ("DK-CoT (sector)", DKCOT_MODEL_ID, "sector"),
+    ("DK-CoT (firm)", DKCOT_MODEL_ID, "firm"),
+]
 
 
 @dataclass(frozen=True)
