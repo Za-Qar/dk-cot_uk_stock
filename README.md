@@ -2,13 +2,27 @@
 
 Master's capstone project comparing financial-news sentiment methods for ten UK-listed companies.
 
-## Initial scope
+## Project scope
 
 - Collect company headlines from GDELT.
 - Collect daily share prices.
 - Clean and map headlines to companies.
-- Compare sentiment-classification approaches.
-- Evaluate sentiment against subsequent stock movement.
+- Compare FinBERT with three DK-CoT knowledge treatments.
+- Evaluate classification and risk-adjusted trading performance.
+
+## Requirements
+
+- Python 3.11 or later.
+- Google Cloud Application Default Credentials and access to the `uk-dkcot` project for GDELT collection.
+- PyCharm notebook support or another Jupyter-compatible environment.
+- An NVIDIA GPU with CUDA-enabled PyTorch for the DK-CoT stage. FinBERT also uses CUDA when available.
+
+Configure Google authentication before collecting headlines:
+
+```powershell
+gcloud auth application-default login
+gcloud auth application-default set-quota-project uk-dkcot
+```
 
 ## Setup
 
@@ -17,26 +31,27 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-Generated datasets belong in `data/raw` and `data/processed` and are not committed to Git.
+Generated datasets are stored in `data/raw` and `data/processed` and are not committed to Git.
 
-## Run the completed pipeline
+## Pipeline
 
-Run each stage from the project root:
+Run the stages in numeric order from the project root:
 
-```powershell
-python pipeline/01_collect_data.py
-python pipeline/03_align_prices.py
-python pipeline/05_finbert.py
-python pipeline/06_dkcot.py
-python pipeline/07_evaluate.py
-python pipeline/08_backtest.py
-```
+1. `python pipeline/01_collect_data.py`
+2. Open `pipeline/02_clean_headlines.ipynb` and run all cells.
+3. `python pipeline/03_align_prices.py`
+4. Open `pipeline/04_label_sentiment.ipynb` and run all cells.
+5. `python pipeline/05_finbert.py`
+6. `python pipeline/06_dkcot.py`
+7. `python pipeline/07_evaluate.py`
+8. `python pipeline/08_backtest.py`
 
-The two notebooks contain the interactive cleaning and labelling stages:
+Existing raw data and completed DK-CoT checkpoints prevent unnecessary repeated collection or generation.
 
-- `pipeline/02_clean_headlines.ipynb`
-- `pipeline/04_label_sentiment.ipynb`
+## Outputs
 
-Final numerical tables are written to `results/tables` and
-`data/processed/backtest_results.csv`. Report-ready figures are written to
-`results/figures`.
+Classification tables are written to `results/tables`. Backtest results and daily signals are written to `data/processed`. Report-ready figures are written to `results/figures`.
+
+## Data coverage
+
+The collected 2025 GDELT extract contains no headline records from 15 June to 11 September 2025. This source-coverage limitation should be considered when interpreting the classification and backtest results.

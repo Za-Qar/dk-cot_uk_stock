@@ -1,9 +1,17 @@
-from uk_dkcot.config import END_DATE, START_DATE, load_companies, Company, RAW_DATA_DIR
-from google.cloud import bigquery
-from datetime import date, timedelta
 import re
+from datetime import date, timedelta
+
+from google.cloud import bigquery
 import pandas as pd
 import yfinance as yf
+
+from uk_dkcot.config import (
+    END_DATE,
+    RAW_DATA_DIR,
+    START_DATE,
+    Company,
+    load_companies,
+)
 
 DRY_RUN = False
 GDELT_QUERY = """
@@ -19,6 +27,7 @@ GDELT_QUERY = """
     AND REGEXP_CONTAINS(LOWER(title), @alias_pattern)
     """
 
+
 def build_alias_pattern(companies: list[Company]):
     """Combine all company aliases into one BigQuery search pattern."""
 
@@ -28,11 +37,12 @@ def build_alias_pattern(companies: list[Company]):
         for alias in company.aliases:
             aliases.add(alias.lower())
 
-    # The longest first so more specific names match before shorter ones. This helps avoid short aliases accidentally matching inside longer text first.
+    # Longer, more specific aliases are placed before shorter alternatives.
     ordered_aliases = sorted(aliases, key=len, reverse=True)
     joined_aliases = "|".join(ordered_aliases)
 
     return f"(^|[^a-z0-9])({joined_aliases})([^a-z0-9]|$)"
+
 
 def find_matching_company(title: str, companies: list[Company]):
     """Return the one company mentioned in the headline."""
@@ -41,17 +51,19 @@ def find_matching_company(title: str, companies: list[Company]):
 
     for company in companies:
         for alias in company.aliases:
-             pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
+            pattern = rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])"
 
-             if re.search(pattern, title, re.IGNORECASE):
+            if re.search(pattern, title, re.IGNORECASE):
                 matches.append(company)
                 break
 
-    # A multi-company headline may have different sentiment implications for each company, so retain only headlines that map clearly to one company.
+    # Multi-company headlines may imply different sentiment for each company.
+    # Only unambiguous one-company matches are retained.
     if len(matches) == 1:
         return matches[0]
 
     return None
+
 
 def collect_prices(companies):
     """Collect and save daily prices for all companies."""
@@ -199,8 +211,7 @@ def main():
     collect_prices(companies)
 
 
-# __name__ is a special variable automatically created by Python
-# This means that, if this file was run directly, call main().
+# Run the pipeline only when this file is executed directly.
 if __name__ == "__main__":
     main()
 
