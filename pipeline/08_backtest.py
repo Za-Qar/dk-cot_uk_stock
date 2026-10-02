@@ -178,7 +178,7 @@ def run_strategy(panel, strategy):
         & (tested["strategy_position"] * tested["forward_return"] > 0)
     ).astype(int)
 
-    # Each company has a fixed 10% portfolio weight; unused allocations remain cash.
+    # Each company has a fixed 10% portfolio weight. Unused allocations remain cash.
     daily = (
         tested.groupby("date", as_index=False)
         .agg(
@@ -190,6 +190,8 @@ def run_strategy(panel, strategy):
         )
         .sort_values("date")
     )
+    # Daily company returns are summed and divided by ten, giving each company an effective 10% portfolio weight. 
+    # Where no position is taken for a company, its contribution is zero and the unused allocation is treated as remaining in cash.
     daily[["gross_return", "transaction_cost", "net_return"]] /= COMPANY_COUNT
     daily["cumulative_return"] = (1 + daily["net_return"]).cumprod() - 1
     return tested, daily
