@@ -1,0 +1,9 @@
+Condition,Strategy,Sharpe ratio,Hit rate (%),Cumulative net return (%),Active company-days
+FinBERT,Long-only,-0.289,52.53,-1.58,632
+FinBERT,Long-short,-2.312,49.84,-11.42,941
+DK-CoT (none),Long-only,-0.058,53.34,-0.47,703
+DK-CoT (none),Long-short,-2.519,49.91,-12.65,1064
+DK-CoT (sector),Long-only,-0.284,53.81,-1.8,708
+DK-CoT (sector),Long-short,-2.623,50.23,-13.53,1069
+DK-CoT (firm),Long-only,-0.013,53.98,-0.21,678
+DK-CoT (firm),Long-short,-2.139,50.84,-10.82,1076

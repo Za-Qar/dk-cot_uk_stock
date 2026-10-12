@@ -10,7 +10,10 @@ TRANSACTION_COST_BPS = 10
 BOOTSTRAP_ITERATIONS = 2_000
 BLOCK_LENGTH = 5
 RANDOM_SEED = 2025
-COMPANY_COUNT = 10
+
+LONG_ONLY = "long-only"
+LONG_SHORT = "long-short"
+STRATEGIES = (LONG_ONLY, LONG_SHORT)
 
 MODEL_VARIANTS = [
     ("FinBERT", "ProsusAI/finbert", "none"),
@@ -93,7 +96,6 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
         )
         .agg(
             sentiment_score=("sentiment_score", "mean"),
-            headline_count=("headline_id", "size"),
         )
     )
 
@@ -111,7 +113,7 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
         model_scores = daily_scores.loc[
             (daily_scores["model_id"] == model_id)
             & (daily_scores["knowledge_level"] == knowledge_level),
-            ["trade_date", "ticker", "sentiment_score", "headline_count"],
+            ["trade_date", "ticker", "sentiment_score"],
         ]
         panel = prices.merge(
             model_scores,
@@ -121,9 +123,7 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
             validate="one_to_one",
         )
         panel["sentiment_score"] = panel["sentiment_score"].fillna(0.0)
-        panel["headline_count"] = panel["headline_count"].fillna(0).astype(int)
         panel["position"] = np.sign(panel["sentiment_score"]).astype(int)
-        panel["model"] = name
         panel["model_id"] = model_id
         panel["knowledge_level"] = knowledge_level
         panels[name] = panel
@@ -148,9 +148,9 @@ def run_strategy(panel, strategy):
     """Apply one strategy to a model's daily company-level signals."""
 
     tested = panel.copy().sort_values(["ticker", "date"])
-    if strategy == "long-only":
+    if strategy == LONG_ONLY:
         tested["strategy_position"] = tested["position"].clip(lower=0)
-    elif strategy == "long-short":
+    elif strategy == LONG_SHORT:
         tested["strategy_position"] = tested["position"]
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
@@ -160,6 +160,7 @@ def run_strategy(panel, strategy):
     previous_position = tested.groupby("ticker")["strategy_position"].shift(1)
     previous_position = previous_position.fillna(0)
     tested["turnover"] = (tested["strategy_position"] - previous_position).abs()
+
     tested["gross_return"] = (
         tested["strategy_position"] * tested["forward_return"].fillna(0)
     )
@@ -179,6 +180,7 @@ def run_strategy(panel, strategy):
     ).astype(int)
 
     # Each company has a fixed 10% portfolio weight. Unused allocations remain cash.
+    company_count = tested["ticker"].nunique()
     daily = (
         tested.groupby("date", as_index=False)
         .agg(
@@ -190,11 +192,11 @@ def run_strategy(panel, strategy):
         )
         .sort_values("date")
     )
-    # Daily company returns are summed and divided by ten, giving each company an effective 10% portfolio weight. 
+    # Daily company returns are summed and divided by ten, giving each company an effective 10% portfolio weight.
     # Where no position is taken for a company, its contribution is zero and the unused allocation is treated as remaining in cash.
-    daily[["gross_return", "transaction_cost", "net_return"]] /= COMPANY_COUNT
+    daily[["gross_return", "transaction_cost", "net_return"]] /= company_count
     daily["cumulative_return"] = (1 + daily["net_return"]).cumprod() - 1
-    return tested, daily
+    return daily
 
 
 def evaluate_backtests(panels):
@@ -205,10 +207,10 @@ def evaluate_backtests(panels):
     seed = RANDOM_SEED
 
     for name, model_id, knowledge_level in MODEL_VARIANTS:
-        for strategy in ["long-only", "long-short"]:
-            tested, daily = run_strategy(panels[name], strategy)
-            active_trades = int(tested["active_trade"].sum())
-            correct_trades = int(tested["correct_trade"].sum())
+        for strategy in STRATEGIES:
+            daily = run_strategy(panels[name], strategy)
+            active_trades = int(daily["active_trades"].sum())
+            correct_trades = int(daily["correct_trades"].sum())
             intervals = block_bootstrap_intervals(daily, seed)
             seed += 1
 
@@ -234,6 +236,87 @@ def evaluate_backtests(panels):
     return pd.DataFrame(result_rows), daily_curves
 
 
+def create_report_table(results_df):
+    """Create the concise backtest table used in the dissertation."""
+
+    report_table = results_df[
+        [
+            "model",
+            "strategy",
+            "Sharpe_ratio",
+            "hit_rate",
+            "cumulative_return",
+            "active_trades",
+        ]
+    ].copy()
+
+    report_table["strategy"] = report_table["strategy"].str.capitalize()
+    report_table["Sharpe_ratio"] = report_table["Sharpe_ratio"].round(3)
+    report_table["hit_rate"] = (report_table["hit_rate"] * 100).round(2)
+    report_table["cumulative_return"] = (
+        report_table["cumulative_return"] * 100
+    ).round(2)
+
+    return report_table.rename(
+        columns={
+            "model": "Condition",
+            "strategy": "Strategy",
+            "Sharpe_ratio": "Sharpe ratio",
+            "hit_rate": "Hit rate (%)",
+            "cumulative_return": "Cumulative net return (%)",
+            "active_trades": "Active company-days",
+        }
+    )
+
+
+def save_backtest_summary_figure(report_table, output_path):
+    """Save the concise backtest results as a report-ready table figure."""
+
+    display_table = report_table.copy()
+    display_table["Sharpe ratio"] = display_table["Sharpe ratio"].map(
+        lambda value: f"{value:.3f}"
+    )
+    display_table["Hit rate (%)"] = display_table["Hit rate (%)"].map(
+        lambda value: f"{value:.2f}%"
+    )
+    display_table["Cumulative net return (%)"] = display_table[
+        "Cumulative net return (%)"
+    ].map(lambda value: f"{value:.2f}%")
+    display_table["Active company-days"] = display_table[
+        "Active company-days"
+    ].map(lambda value: f"{value:,.0f}")
+
+    plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 9})
+    figure, axis = plt.subplots(figsize=(12, 4.2))
+    axis.axis("off")
+    table = axis.table(
+        cellText=display_table.to_numpy(),
+        colLabels=display_table.columns,
+        cellLoc="center",
+        colLoc="center",
+        colWidths=[0.19, 0.13, 0.13, 0.13, 0.23, 0.18],
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(8.5)
+    table.scale(1, 1.55)
+
+    for (row, column), cell in table.get_celld().items():
+        cell.set_edgecolor("#D6DEDA")
+        if row == 0:
+            cell.set_facecolor("#0B6E75")
+            cell.set_text_props(color="white", weight="bold")
+        elif row % 2 == 0:
+            cell.set_facecolor("#F1F5F3")
+        if row > 0 and column in (0, 1):
+            cell.set_text_props(ha="left")
+
+    axis.set_title("Backtest performance summary", fontsize=13, pad=12)
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(figure)
+
+
 def save_cumulative_return_figure(daily_curves, output_path):
     """Save cumulative net-return curves for both trading strategies."""
 
@@ -241,7 +324,7 @@ def save_cumulative_return_figure(daily_curves, output_path):
     colours = ["#0B6E75", "#D17A22", "#4C78A8", "#8C564B"]
     figure, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-    for axis, strategy in zip(axes, ["long-only", "long-short"]):
+    for axis, strategy in zip(axes, STRATEGIES):
         for colour, (name, _, _) in zip(colours, MODEL_VARIANTS):
             daily = daily_curves[(name, strategy)]
             axis.plot(
@@ -268,11 +351,11 @@ def save_backtest_metrics_figure(results_df, output_path):
     """Save Sharpe-ratio and hit-rate comparisons with confidence intervals."""
 
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.8))
-    colours = {"long-only": "#0B6E75", "long-short": "#D17A22"}
+    colours = {LONG_ONLY: "#0B6E75", LONG_SHORT: "#D17A22"}
     positions = np.arange(len(MODEL_VARIANTS))
     width = 0.36
 
-    for offset, strategy in [(-width / 2, "long-only"), (width / 2, "long-short")]:
+    for offset, strategy in [(-width / 2, LONG_ONLY), (width / 2, LONG_SHORT)]:
         subset = results_df.loc[results_df["strategy"] == strategy].set_index("model")
         subset = subset.loc[[item[0] for item in MODEL_VARIANTS]]
 
@@ -324,7 +407,9 @@ def save_backtest_metrics_figure(results_df, output_path):
 def main():
     """Create daily signals and backtest all model variants consistently."""
 
+    tables_directory = PROJECT_ROOT / "results" / "tables"
     figures_directory = PROJECT_ROOT / "results" / "figures"
+    tables_directory.mkdir(parents=True, exist_ok=True)
     figures_directory.mkdir(parents=True, exist_ok=True)
 
     headlines_df = pd.read_csv(
@@ -342,11 +427,14 @@ def main():
         predictions_df,
     )
     results_df, daily_curves = evaluate_backtests(panels)
+    report_table = create_report_table(results_df)
 
     signals_path = PROCESSED_DATA_DIR / "daily_signals.csv"
     results_path = PROCESSED_DATA_DIR / "backtest_results.csv"
+    report_table_path = tables_directory / "backtest_summary.csv"
     daily_signals_df.to_csv(signals_path, index=False)
     results_df.to_csv(results_path, index=False)
+    report_table.to_csv(report_table_path, index=False)
 
     save_cumulative_return_figure(
         daily_curves,
@@ -356,10 +444,15 @@ def main():
         results_df,
         figures_directory / "backtest_metrics.png",
     )
+    save_backtest_summary_figure(
+        report_table,
+        figures_directory / "backtest_summary_table.png",
+    )
 
     print(results_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
     print(f"\nSaved daily signals to {signals_path}")
     print(f"Saved backtest results to {results_path}")
+    print(f"Saved report table to {report_table_path}")
     print(f"Saved figures to {figures_directory}")
 
 
