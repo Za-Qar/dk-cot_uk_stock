@@ -1,15 +1,27 @@
 import hashlib
-
 import pandas as pd
 
-from uk_dkcot.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from uk_dkcot.config import PD_DATE_FORMAT, PROCESSED_DATA_DIR, RAW_DATA_DIR
+
+TICKER_COLUMN = "ticker"
+PUBLISHED_AT_UTC_COLUMN = "published_at_utc"
+HEADLINE_TEXT_COLUMN = "headline_text"
+PUBLISHED_AT_LONDON_COLUMN = "published_at_london"
+HEADLINE_DATE_LONDON_COLUMN = "headline_date_london"
+LONDON_TIMEZONE = "Europe/London"
+DATE_COLUMN = "date"
+TRADE_DATE_COLUMN = "trade_date"
 
 
 def create_headline_id(row):
     """Create a stable identifier from the company, timestamp and headline."""
 
-    identifying_text = (
-        f"{row['ticker']}|{row['published_at_utc']}|{row['headline_text']}"
+    identifying_text = "|".join(
+        (
+            row[TICKER_COLUMN],
+            row[PUBLISHED_AT_UTC_COLUMN],
+            row[HEADLINE_TEXT_COLUMN],
+        )
     )
     return hashlib.sha256(identifying_text.encode("utf-8")).hexdigest()
 
@@ -18,10 +30,10 @@ def align_company_headlines(headlines, prices):
     """Assign each headline to the company's next available trading-day open."""
 
     return pd.merge_asof(
-        headlines.sort_values("headline_date_london"),
-        prices.sort_values("trade_date"),
-        left_on="headline_date_london",
-        right_on="trade_date",
+        headlines.sort_values(HEADLINE_DATE_LONDON_COLUMN),
+        prices.sort_values(TRADE_DATE_COLUMN),
+        left_on=HEADLINE_DATE_LONDON_COLUMN,
+        right_on=TRADE_DATE_COLUMN,
         direction="forward",
         allow_exact_matches=False,
     )
@@ -38,37 +50,44 @@ def main():
     prices_df = pd.read_csv(prices_path)
 
     published_at_utc = pd.to_datetime(
-        headlines_df["published_at_utc"],
+        headlines_df[PUBLISHED_AT_UTC_COLUMN],
         utc=True,
         errors="raise",
     )
-    headlines_df["published_at_london"] = published_at_utc.dt.tz_convert(
-        "Europe/London"
+    # Convert each UTC publication timestamp into UK local time
+    headlines_df[PUBLISHED_AT_LONDON_COLUMN] = published_at_utc.dt.tz_convert(
+        LONDON_TIMEZONE
     )
-    headlines_df["headline_date_london"] = (
-        headlines_df["published_at_london"].dt.tz_localize(None).dt.normalize()
+    # Remove the timezone and time so the local date can be matched with daily prices
+    headlines_df[HEADLINE_DATE_LONDON_COLUMN] = (
+        headlines_df[PUBLISHED_AT_LONDON_COLUMN].dt.tz_localize(None).dt.normalize()
     )
 
-    prices_df["date"] = pd.to_datetime(prices_df["date"], errors="raise")
+    prices_df[DATE_COLUMN] = pd.to_datetime(prices_df[DATE_COLUMN], errors="raise")
 
     aligned_companies = []
 
-    for ticker in sorted(headlines_df["ticker"].unique()):
+    # Process each company separately so its headlines only use its own respective prices
+    for ticker in sorted(headlines_df[TICKER_COLUMN].unique()):
+        # Select only the current company's headlines
         company_headlines = headlines_df.loc[
-            headlines_df["ticker"] == ticker
+            headlines_df[TICKER_COLUMN] == ticker
         ].copy()
+        # Select the current company's dates and opening prices
         company_prices = prices_df.loc[
-            prices_df["ticker"] == ticker,
-            ["date", "open"],
-        ].rename(columns={"date": "trade_date", "open": "trade_open"})
+            prices_df[TICKER_COLUMN] == ticker,
+            [DATE_COLUMN, "open"],
+        ].rename(columns={DATE_COLUMN: TRADE_DATE_COLUMN, "open": "trade_open"})
 
+        # Match each headline to this company's next trading-day opening price
         aligned_companies.append(
             align_company_headlines(company_headlines, company_prices)
         )
 
     aligned_df = pd.concat(aligned_companies, ignore_index=True)
 
-    missing_prices = aligned_df["trade_date"].isna()
+    # Find headlines for which no later trading-day price was available
+    missing_prices = aligned_df[TRADE_DATE_COLUMN].isna()
     if missing_prices.any():
         missing_count = int(missing_prices.sum())
         raise ValueError(
@@ -76,13 +95,14 @@ def main():
             "Extend the price data beyond the final headline date."
         )
 
+    # Confirm that the alignment did not add or remove headline rows
     assert len(aligned_df) == len(headlines_df)
     assert (
-        aligned_df["trade_date"] > aligned_df["headline_date_london"]
+        aligned_df[TRADE_DATE_COLUMN] > aligned_df[HEADLINE_DATE_LONDON_COLUMN]
     ).all()
 
     aligned_df = aligned_df.sort_values(
-        ["published_at_utc", "ticker", "headline_text"]
+        [PUBLISHED_AT_UTC_COLUMN, TICKER_COLUMN, HEADLINE_TEXT_COLUMN]
     ).reset_index(drop=True)
 
     aligned_df.insert(
@@ -90,15 +110,14 @@ def main():
         "headline_id",
         aligned_df.apply(create_headline_id, axis=1),
     )
+    # Confirm that every generated headline identifier is unique
     assert aligned_df["headline_id"].is_unique
 
-    aligned_df["published_at_london"] = aligned_df[
-        "published_at_london"
-    ].astype(str)
-    aligned_df["headline_date_london"] = aligned_df[
-        "headline_date_london"
-    ].dt.strftime("%Y-%m-%d")
-    aligned_df["trade_date"] = aligned_df["trade_date"].dt.strftime("%Y-%m-%d")
+    # Save both date columns in a consistent year-month-day format
+    aligned_df[HEADLINE_DATE_LONDON_COLUMN] = aligned_df[
+        HEADLINE_DATE_LONDON_COLUMN
+    ].dt.strftime(PD_DATE_FORMAT)
+    aligned_df[TRADE_DATE_COLUMN] = aligned_df[TRADE_DATE_COLUMN].dt.strftime(PD_DATE_FORMAT)
 
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     aligned_df.to_csv(output_path, index=False)

@@ -1,9 +1,8 @@
 import re
-
 import pandas as pd
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from uk_dkcot.config import PROCESSED_DATA_DIR, load_companies
 
 

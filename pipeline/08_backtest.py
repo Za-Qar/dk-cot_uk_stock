@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from uk_dkcot.config import PROCESSED_DATA_DIR, PROJECT_ROOT, RAW_DATA_DIR
+from uk_dkcot.config import PD_DATE_FORMAT, PROCESSED_DATA_DIR, PROJECT_ROOT, RAW_DATA_DIR
 
 
 SENTIMENT_SCORES = {"negative": -1, "neutral": 0, "positive": 1}
@@ -104,7 +104,7 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
     prices = prices.sort_values(["ticker", "date"])
     prices["next_open"] = prices.groupby("ticker")["open"].shift(-1)
     prices["forward_return"] = prices["next_open"] / prices["open"] - 1
-    prices["date"] = prices["date"].dt.strftime("%Y-%m-%d")
+    prices["date"] = prices["date"].dt.strftime(PD_DATE_FORMAT)
 
     panels = {}
     output_rows = []

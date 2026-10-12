@@ -15,6 +15,9 @@ GOOGLE_CLOUD_PROJECT_ID = "uk-dkcot"
 
 GDELT_HEADLINES_CSV_FILE_NAME = "gdelt_headlines.csv"
 
+# The date format string `%Y-%m-%d` (https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html) removes the time and keeps the year-month-day. This is done to ensure a consistent format to match with headline trading dates later.
+PD_DATE_FORMAT = "%Y-%m-%d"
+
 START_DATE = "2025-01-01"
 END_DATE = "2025-12-31"
 

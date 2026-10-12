@@ -5,6 +5,7 @@ import yfinance as yf
 from google.cloud import bigquery
 from datetime import date, timedelta
 from uk_dkcot.config import (
+    PD_DATE_FORMAT,
     END_DATE,
     RAW_DATA_DIR,
     START_DATE,
@@ -118,12 +119,10 @@ def collect_prices(companies) -> None:
         )
 
         company_prices["ticker"] = company.ticker
-
-        
-        # The date format string `%Y-%m-%d` (https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html) removes the time and keeps the year-month-day. This is done to ensure a consistent format to match with headline trading dates later.        
+  
         company_prices["date"] = pd.to_datetime(
             company_prices["date"]
-        ).dt.strftime("%Y-%m-%d")
+        ).dt.strftime(PD_DATE_FORMAT)
 
         frames.append(
             company_prices[
