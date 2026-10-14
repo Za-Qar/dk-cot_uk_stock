@@ -314,11 +314,11 @@ def main():
 
     save_checkpoint(predictions, output_path)
 
-    results_df = pd.read_csv(output_path)
+    predictions_results_df = pd.read_csv(output_path)
   
     print("---------------------------------Prediction counts by knowledge level:---------------------------------")
     print(
-        results_df.groupby(["knowledge_level", "label_pred"])
+        predictions_results_df.groupby(["knowledge_level", "label_pred"])
         .size()
         .to_string()
     )
