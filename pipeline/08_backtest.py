@@ -9,11 +9,14 @@ from uk_dkcot.config import (
     BACKTEST_SUMMARY_CSV_FILE_NAME,
     BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME,
     DAILY_SIGNALS_CSV_FILE_NAME,
+    DKCOT_KNOWLEDGE_LEVELS,
+    DKCOT_MODEL_NAME,
     DKCOT_PREDICTIONS_CSV_FILE_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
     NEGATIVE_LABEL,
     NEUTRAL_LABEL,
+    NO_KNOWLEDGE_LEVEL,
     PD_DATE_FORMAT,
     POSITIVE_LABEL,
     PROCESSED_DATA_DIR,
@@ -34,10 +37,11 @@ LONG_SHORT = "long-short"
 STRATEGIES = (LONG_ONLY, LONG_SHORT)
 
 MODEL_VARIANTS = [
-    ("FinBERT", "ProsusAI/finbert", "none"),
-    ("DK-CoT (none)", "Qwen/Qwen2.5-3B-Instruct", "none"),
-    ("DK-CoT (sector)", "Qwen/Qwen2.5-3B-Instruct", "sector"),
-    ("DK-CoT (firm)", "Qwen/Qwen2.5-3B-Instruct", "firm"),
+    ("FinBERT", "ProsusAI/finbert", NO_KNOWLEDGE_LEVEL),
+    *[
+        (f"DK-CoT ({knowledge_level})", DKCOT_MODEL_NAME, knowledge_level)
+        for knowledge_level in DKCOT_KNOWLEDGE_LEVELS
+    ],
 ]
 
 

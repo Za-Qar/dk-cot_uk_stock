@@ -10,11 +10,14 @@ from uk_dkcot.config import (
     CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME,
     CLASSIFICATION_METRICS_PNG_FILE_NAME,
     CLASSIFICATION_RESULTS_CSV_FILE_NAME,
+    DKCOT_KNOWLEDGE_LEVELS,
+    DKCOT_MODEL_NAME,
     DKCOT_PREDICTIONS_CSV_FILE_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
     GOLD_LABELS_CSV_FILE_NAME,
     NEGATIVE_LABEL,
     NEUTRAL_LABEL,
+    NO_KNOWLEDGE_LEVEL,
     PAIRED_SIGNIFICANCE_TESTS_CSV_FILE_NAME,
     POSITIVE_LABEL,
     PROCESSED_DATA_DIR,
@@ -27,10 +30,11 @@ BOOTSTRAP_ITERATIONS = 2_000
 RANDOM_SEED = 2025
 
 MODEL_VARIANTS = [
-    ("FinBERT", "ProsusAI/finbert", "none"),
-    ("DK-CoT (none)", "Qwen/Qwen2.5-3B-Instruct", "none"),
-    ("DK-CoT (sector)", "Qwen/Qwen2.5-3B-Instruct", "sector"),
-    ("DK-CoT (firm)", "Qwen/Qwen2.5-3B-Instruct", "firm"),
+    ("FinBERT", "ProsusAI/finbert", NO_KNOWLEDGE_LEVEL),
+    *[
+        (f"DK-CoT ({knowledge_level})", DKCOT_MODEL_NAME, knowledge_level)
+        for knowledge_level in DKCOT_KNOWLEDGE_LEVELS
+    ],
 ]
 
 

@@ -43,6 +43,17 @@ NEUTRAL_LABEL = "neutral"
 NEGATIVE_LABEL = "negative"
 VALID_SENTIMENT_LABELS = {POSITIVE_LABEL, NEUTRAL_LABEL, NEGATIVE_LABEL}
 
+# Shared DK-CoT experiment configuration
+DKCOT_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
+NO_KNOWLEDGE_LEVEL = "none"
+SECTOR_KNOWLEDGE_LEVEL = "sector"
+FIRM_KNOWLEDGE_LEVEL = "firm"
+DKCOT_KNOWLEDGE_LEVELS = (
+    NO_KNOWLEDGE_LEVEL,
+    SECTOR_KNOWLEDGE_LEVEL,
+    FIRM_KNOWLEDGE_LEVEL,
+)
+
 # The date format string `%Y-%m-%d` (https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html) removes the time and keeps the year-month-day. This is done to ensure a consistent format to match with headline trading dates later.
 PD_DATE_FORMAT = "%Y-%m-%d"
 

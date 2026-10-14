@@ -7,6 +7,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from uk_dkcot.config import (
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    NO_KNOWLEDGE_LEVEL,
     PROCESSED_DATA_DIR,
     VALID_SENTIMENT_LABELS,
 )
@@ -77,7 +78,7 @@ def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame :
                 {
                     "headline_id": row.headline_id,
                     "model_id": MODEL_NAME,
-                    "knowledge_level": "none",
+                    "knowledge_level": NO_KNOWLEDGE_LEVEL,
                     "label_pred": predicted_label,
                     "raw_output": json.dumps(finBERT_score_output, sort_keys=True),
                     "parse_ok": True,
