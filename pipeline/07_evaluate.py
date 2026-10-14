@@ -87,7 +87,6 @@ def load_evaluation_data():
     assert gold_df.columns.tolist() == [
         "headline_id",
         "label_gold",
-        "annotator_pass",
     ]
     assert gold_df["headline_id"].is_unique
     assert set(gold_df["label_gold"]) == set(LABELS)
