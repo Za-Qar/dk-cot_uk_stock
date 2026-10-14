@@ -11,6 +11,7 @@ from uk_dkcot.config import (
     START_DATE,
     GOOGLE_CLOUD_PROJECT_ID,
     GDELT_HEADLINES_CSV_FILE_NAME,
+    YFINANCE_PRICES_CSV_FILE_NAME,
     Company,
     load_companies,
 )
@@ -77,7 +78,7 @@ def find_matching_company(title: str, companies: list[Company]) -> Company | Non
 def collect_prices(companies) -> None:
     """Collect and save daily prices for all companies from yfinance."""
 
-    output_path = RAW_DATA_DIR / "yfinance_prices.csv"
+    output_path = RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME
 
     if output_path.exists():
         print(f"Prices already exist; skipping: {output_path}")

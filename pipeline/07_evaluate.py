@@ -6,10 +6,23 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 
-from uk_dkcot.config import PROCESSED_DATA_DIR, PROJECT_ROOT
+from uk_dkcot.config import (
+    CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME,
+    CLASSIFICATION_METRICS_PNG_FILE_NAME,
+    CLASSIFICATION_RESULTS_CSV_FILE_NAME,
+    DKCOT_PREDICTIONS_CSV_FILE_NAME,
+    FINBERT_PREDICTIONS_CSV_FILE_NAME,
+    GOLD_LABELS_CSV_FILE_NAME,
+    NEGATIVE_LABEL,
+    NEUTRAL_LABEL,
+    PAIRED_SIGNIFICANCE_TESTS_CSV_FILE_NAME,
+    POSITIVE_LABEL,
+    PROCESSED_DATA_DIR,
+    PROJECT_ROOT,
+)
 
 
-LABELS = ["negative", "neutral", "positive"]
+LABELS = [NEGATIVE_LABEL, NEUTRAL_LABEL, POSITIVE_LABEL]
 BOOTSTRAP_ITERATIONS = 2_000
 RANDOM_SEED = 2025
 
@@ -80,9 +93,9 @@ def exact_mcnemar_test(first_correct, second_correct):
 def load_evaluation_data():
     """Load gold labels and all four model prediction variants."""
 
-    gold_df = pd.read_csv(PROCESSED_DATA_DIR / "gold_labels.csv")
-    finbert_df = pd.read_csv(PROCESSED_DATA_DIR / "finbert_predictions.csv")
-    dkcot_df = pd.read_csv(PROCESSED_DATA_DIR / "dkcot_predictions.csv")
+    gold_df = pd.read_csv(PROCESSED_DATA_DIR / GOLD_LABELS_CSV_FILE_NAME)
+    finbert_df = pd.read_csv(PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME)
+    dkcot_df = pd.read_csv(PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME)
 
     assert gold_df.columns.tolist() == [
         "headline_id",
@@ -303,18 +316,18 @@ def main():
     results_df, paired_predictions = evaluate_models(gold_df, predictions_df)
     significance_df = compare_paired_predictions(paired_predictions)
 
-    results_path = tables_directory / "classification_results.csv"
-    significance_path = tables_directory / "paired_significance_tests.csv"
+    results_path = tables_directory / CLASSIFICATION_RESULTS_CSV_FILE_NAME
+    significance_path = tables_directory / PAIRED_SIGNIFICANCE_TESTS_CSV_FILE_NAME
     results_df.to_csv(results_path, index=False)
     significance_df.to_csv(significance_path, index=False)
 
     save_classification_figure(
         results_df,
-        figures_directory / "classification_metrics.png",
+        figures_directory / CLASSIFICATION_METRICS_PNG_FILE_NAME,
     )
     save_confusion_matrices(
         paired_predictions,
-        figures_directory / "classification_confusion_matrices.png",
+        figures_directory / CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME,
     )
 
     print(results_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))

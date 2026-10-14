@@ -3,7 +3,14 @@ import pandas as pd
 import torch
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from uk_dkcot.config import PROCESSED_DATA_DIR, load_companies
+from uk_dkcot.config import (
+    DKCOT_PREDICTIONS_CSV_FILE_NAME,
+    HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    NEUTRAL_LABEL,
+    PROCESSED_DATA_DIR,
+    VALID_SENTIMENT_LABELS,
+    load_companies,
+)
 
 
 MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
@@ -89,7 +96,7 @@ def parse_sentiment(raw_output):
         return matches[-1].lower(), True
 
     # Chen et al.'s code also defaults an unparseable response to neutral.
-    return "neutral", False
+    return NEUTRAL_LABEL, False
 
 
 def load_model():
@@ -184,8 +191,8 @@ def save_checkpoint(predictions, output_path):
 def main():
     """Generate DK-CoT predictions under all three knowledge treatments."""
 
-    input_path = PROCESSED_DATA_DIR / "headlines_aligned_prices.csv"
-    output_path = PROCESSED_DATA_DIR / "dkcot_predictions.csv"
+    input_path = PROCESSED_DATA_DIR / HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME
+    output_path = PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME
 
     headlines_df = pd.read_csv(input_path)
     required_columns = ["headline_id", "ticker", "headline_text"]
@@ -249,11 +256,10 @@ def main():
     save_checkpoint(predictions, output_path)
 
     results_df = pd.read_csv(output_path)
-    valid_labels = {"positive", "neutral", "negative"}
     assert len(results_df) == total_predictions
     assert not results_df.duplicated(["headline_id", "knowledge_level"]).any()
     assert set(results_df["knowledge_level"]) == set(KNOWLEDGE_LEVELS)
-    assert set(results_df["label_pred"]).issubset(valid_labels)
+    assert set(results_df["label_pred"]).issubset(VALID_SENTIMENT_LABELS)
 
     print("Prediction counts by knowledge level:")
     print(

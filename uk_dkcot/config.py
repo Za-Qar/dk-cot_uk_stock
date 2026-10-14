@@ -10,16 +10,46 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
-COMPANIES_PATH = PROJECT_ROOT / "config" / "companies.csv"
-GOOGLE_CLOUD_PROJECT_ID = "uk-dkcot"
 
+# Shared input and output filenames
+COMPANIES_CSV_FILE_NAME = "companies.csv"
 GDELT_HEADLINES_CSV_FILE_NAME = "gdelt_headlines.csv"
+YFINANCE_PRICES_CSV_FILE_NAME = "yfinance_prices.csv"
+GDELT_HEADLINES_DEDUPLICATED_CSV_FILE_NAME = "gdelt_headlines_deduplicated.csv"
+HEADLINE_MAPPING_REVIEW_CSV_FILE_NAME = "headline_mapping_review.csv"
+HEADLINE_MAPPING_EXCLUSIONS_CSV_FILE_NAME = "headline_mapping_exclusions.csv"
+GDELT_HEADLINES_CLEAN_CSV_FILE_NAME = "gdelt_headlines_clean.csv"
+HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME = "headlines_aligned_prices.csv"
+GOLD_LABELS_CSV_FILE_NAME = "gold_labels.csv"
+FINBERT_PREDICTIONS_CSV_FILE_NAME = "finbert_predictions.csv"
+DKCOT_PREDICTIONS_CSV_FILE_NAME = "dkcot_predictions.csv"
+CLASSIFICATION_RESULTS_CSV_FILE_NAME = "classification_results.csv"
+PAIRED_SIGNIFICANCE_TESTS_CSV_FILE_NAME = "paired_significance_tests.csv"
+DAILY_SIGNALS_CSV_FILE_NAME = "daily_signals.csv"
+BACKTEST_RESULTS_CSV_FILE_NAME = "backtest_results.csv"
+BACKTEST_SUMMARY_CSV_FILE_NAME = "backtest_summary.csv"
+COMPANIES_PATH = PROJECT_ROOT / "config" / COMPANIES_CSV_FILE_NAME
+
+# Figures created and their respective names
+CLASSIFICATION_METRICS_PNG_FILE_NAME = "classification_metrics.png"
+CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME = "classification_confusion_matrices.png"
+BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME = "backtest_cumulative_returns.png"
+BACKTEST_METRICS_PNG_FILE_NAME = "backtest_metrics.png"
+BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME = "backtest_summary_table.png"
+
+# Shared sentiment labels used by manual labelling and model evaluation
+POSITIVE_LABEL = "positive"
+NEUTRAL_LABEL = "neutral"
+NEGATIVE_LABEL = "negative"
+VALID_SENTIMENT_LABELS = {POSITIVE_LABEL, NEUTRAL_LABEL, NEGATIVE_LABEL}
 
 # The date format string `%Y-%m-%d` (https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html) removes the time and keeps the year-month-day. This is done to ensure a consistent format to match with headline trading dates later.
 PD_DATE_FORMAT = "%Y-%m-%d"
 
+# Other config-relevant constants
 START_DATE = "2025-01-01"
 END_DATE = "2025-12-31"
+GOOGLE_CLOUD_PROJECT_ID = "uk-dkcot"
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,14 @@
 import hashlib
 import pandas as pd
 
-from uk_dkcot.config import PD_DATE_FORMAT, PROCESSED_DATA_DIR, RAW_DATA_DIR
+from uk_dkcot.config import (
+    GDELT_HEADLINES_CLEAN_CSV_FILE_NAME,
+    HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    PD_DATE_FORMAT,
+    PROCESSED_DATA_DIR,
+    RAW_DATA_DIR,
+    YFINANCE_PRICES_CSV_FILE_NAME,
+)
 
 TICKER_COLUMN = "ticker"
 PUBLISHED_AT_UTC_COLUMN = "published_at_utc"
@@ -42,9 +49,9 @@ def align_company_headlines(headlines, prices):
 def main():
     """Align cleaned headlines with next-trading-day opening prices."""
 
-    headlines_path = PROCESSED_DATA_DIR / "gdelt_headlines_clean.csv"
-    prices_path = RAW_DATA_DIR / "yfinance_prices.csv"
-    output_path = PROCESSED_DATA_DIR / "headlines_aligned_prices.csv"
+    headlines_path = PROCESSED_DATA_DIR / GDELT_HEADLINES_CLEAN_CSV_FILE_NAME
+    prices_path = RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME
+    output_path = PROCESSED_DATA_DIR / HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME
 
     headlines_df = pd.read_csv(headlines_path)
     prices_df = pd.read_csv(prices_path)

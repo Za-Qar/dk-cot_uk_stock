@@ -2,10 +2,28 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from uk_dkcot.config import PD_DATE_FORMAT, PROCESSED_DATA_DIR, PROJECT_ROOT, RAW_DATA_DIR
+from uk_dkcot.config import (
+    BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME,
+    BACKTEST_METRICS_PNG_FILE_NAME,
+    BACKTEST_RESULTS_CSV_FILE_NAME,
+    BACKTEST_SUMMARY_CSV_FILE_NAME,
+    BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME,
+    DAILY_SIGNALS_CSV_FILE_NAME,
+    DKCOT_PREDICTIONS_CSV_FILE_NAME,
+    FINBERT_PREDICTIONS_CSV_FILE_NAME,
+    HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    NEGATIVE_LABEL,
+    NEUTRAL_LABEL,
+    PD_DATE_FORMAT,
+    POSITIVE_LABEL,
+    PROCESSED_DATA_DIR,
+    PROJECT_ROOT,
+    RAW_DATA_DIR,
+    YFINANCE_PRICES_CSV_FILE_NAME,
+)
 
 
-SENTIMENT_SCORES = {"negative": -1, "neutral": 0, "positive": 1}
+SENTIMENT_SCORES = {NEGATIVE_LABEL: -1, NEUTRAL_LABEL: 0, POSITIVE_LABEL: 1}
 TRANSACTION_COST_BPS = 10
 BOOTSTRAP_ITERATIONS = 2_000
 BLOCK_LENGTH = 5
@@ -69,8 +87,8 @@ def block_bootstrap_intervals(daily_results, seed):
 def load_predictions():
     """Load FinBERT and DK-CoT predictions under one shared schema."""
 
-    finbert_df = pd.read_csv(PROCESSED_DATA_DIR / "finbert_predictions.csv")
-    dkcot_df = pd.read_csv(PROCESSED_DATA_DIR / "dkcot_predictions.csv")
+    finbert_df = pd.read_csv(PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME)
+    dkcot_df = pd.read_csv(PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME)
     return pd.concat([finbert_df, dkcot_df], ignore_index=True)
 
 
@@ -413,9 +431,9 @@ def main():
     figures_directory.mkdir(parents=True, exist_ok=True)
 
     headlines_df = pd.read_csv(
-        PROCESSED_DATA_DIR / "headlines_aligned_prices.csv"
+        PROCESSED_DATA_DIR / HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME
     )
-    prices_df = pd.read_csv(RAW_DATA_DIR / "yfinance_prices.csv")
+    prices_df = pd.read_csv(RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME)
     predictions_df = load_predictions()
 
     assert headlines_df["headline_id"].is_unique
@@ -429,24 +447,24 @@ def main():
     results_df, daily_curves = evaluate_backtests(panels)
     report_table = create_report_table(results_df)
 
-    signals_path = PROCESSED_DATA_DIR / "daily_signals.csv"
-    results_path = PROCESSED_DATA_DIR / "backtest_results.csv"
-    report_table_path = tables_directory / "backtest_summary.csv"
+    signals_path = PROCESSED_DATA_DIR / DAILY_SIGNALS_CSV_FILE_NAME
+    results_path = PROCESSED_DATA_DIR / BACKTEST_RESULTS_CSV_FILE_NAME
+    report_table_path = tables_directory / BACKTEST_SUMMARY_CSV_FILE_NAME
     daily_signals_df.to_csv(signals_path, index=False)
     results_df.to_csv(results_path, index=False)
     report_table.to_csv(report_table_path, index=False)
 
     save_cumulative_return_figure(
         daily_curves,
-        figures_directory / "backtest_cumulative_returns.png",
+        figures_directory / BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME,
     )
     save_backtest_metrics_figure(
         results_df,
-        figures_directory / "backtest_metrics.png",
+        figures_directory / BACKTEST_METRICS_PNG_FILE_NAME,
     )
     save_backtest_summary_figure(
         report_table,
-        figures_directory / "backtest_summary_table.png",
+        figures_directory / BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME,
     )
 
     print(results_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
