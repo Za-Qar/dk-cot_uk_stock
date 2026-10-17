@@ -12,8 +12,15 @@ from uk_dkcot.config import (
     DKCOT_KNOWLEDGE_LEVELS,
     DKCOT_MODEL_NAME,
     DKCOT_PREDICTIONS_CSV_FILE_NAME,
+    FINBERT_DISPLAY_NAME,
+    FINBERT_MODEL_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
+    HEADLINE_ID_COLUMN,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    KNOWLEDGE_LEVEL_COLUMN,
+    LABEL_PRED_COLUMN,
+    MODEL_COLUMN,
+    MODEL_ID_COLUMN,
     NEGATIVE_LABEL,
     NEUTRAL_LABEL,
     NO_KNOWLEDGE_LEVEL,
@@ -37,7 +44,7 @@ LONG_SHORT = "long-short"
 STRATEGIES = (LONG_ONLY, LONG_SHORT)
 
 MODEL_VARIANTS = [
-    ("FinBERT", "ProsusAI/finbert", NO_KNOWLEDGE_LEVEL),
+    (FINBERT_DISPLAY_NAME, FINBERT_MODEL_NAME, NO_KNOWLEDGE_LEVEL),
     *[
         (f"DK-CoT ({knowledge_level})", DKCOT_MODEL_NAME, knowledge_level)
         for knowledge_level in DKCOT_KNOWLEDGE_LEVELS
@@ -99,21 +106,21 @@ def load_predictions():
 def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
     """Aggregate headline sentiment and build one daily panel per model."""
 
-    headline_keys = headlines_df[["headline_id", "ticker", "trade_date"]]
+    headline_keys = headlines_df[[HEADLINE_ID_COLUMN, "ticker", "trade_date"]]
     scored_predictions = predictions_df.merge(
         headline_keys,
-        on="headline_id",
+        on=HEADLINE_ID_COLUMN,
         how="inner",
         validate="many_to_one",
     )
-    scored_predictions["sentiment_score"] = scored_predictions["label_pred"].map(
+    scored_predictions["sentiment_score"] = scored_predictions[LABEL_PRED_COLUMN].map(
         SENTIMENT_SCORES
     )
     assert not scored_predictions["sentiment_score"].isna().any()
 
     daily_scores = (
         scored_predictions.groupby(
-            ["trade_date", "ticker", "model_id", "knowledge_level"],
+            ["trade_date", "ticker", MODEL_ID_COLUMN, KNOWLEDGE_LEVEL_COLUMN],
             as_index=False,
         )
         .agg(
@@ -133,8 +140,8 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
 
     for name, model_id, knowledge_level in MODEL_VARIANTS:
         model_scores = daily_scores.loc[
-            (daily_scores["model_id"] == model_id)
-            & (daily_scores["knowledge_level"] == knowledge_level),
+            (daily_scores[MODEL_ID_COLUMN] == model_id)
+            & (daily_scores[KNOWLEDGE_LEVEL_COLUMN] == knowledge_level),
             ["trade_date", "ticker", "sentiment_score"],
         ]
         panel = prices.merge(
@@ -146,8 +153,8 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
         )
         panel["sentiment_score"] = panel["sentiment_score"].fillna(0.0)
         panel["position"] = np.sign(panel["sentiment_score"]).astype(int)
-        panel["model_id"] = model_id
-        panel["knowledge_level"] = knowledge_level
+        panel[MODEL_ID_COLUMN] = model_id
+        panel[KNOWLEDGE_LEVEL_COLUMN] = knowledge_level
         panels[name] = panel
 
         output_rows.append(
@@ -155,8 +162,8 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
                 [
                     "date",
                     "ticker",
-                    "model_id",
-                    "knowledge_level",
+                    MODEL_ID_COLUMN,
+                    KNOWLEDGE_LEVEL_COLUMN,
                     "sentiment_score",
                     "position",
                 ]
@@ -238,9 +245,9 @@ def evaluate_backtests(panels):
 
             result_rows.append(
                 {
-                    "model": name,
-                    "model_id": model_id,
-                    "knowledge_level": knowledge_level,
+                    MODEL_COLUMN: name,
+                    MODEL_ID_COLUMN: model_id,
+                    KNOWLEDGE_LEVEL_COLUMN: knowledge_level,
                     "strategy": strategy,
                     "Sharpe_ratio": calculate_sharpe(daily["net_return"]),
                     **intervals,
@@ -263,7 +270,7 @@ def create_report_table(results_df):
 
     report_table = results_df[
         [
-            "model",
+            MODEL_COLUMN,
             "strategy",
             "Sharpe_ratio",
             "hit_rate",
@@ -281,7 +288,7 @@ def create_report_table(results_df):
 
     return report_table.rename(
         columns={
-            "model": "Condition",
+            MODEL_COLUMN: "Condition",
             "strategy": "Strategy",
             "Sharpe_ratio": "Sharpe ratio",
             "hit_rate": "Hit rate (%)",
@@ -378,7 +385,7 @@ def save_backtest_metrics_figure(results_df, output_path):
     width = 0.36
 
     for offset, strategy in [(-width / 2, LONG_ONLY), (width / 2, LONG_SHORT)]:
-        subset = results_df.loc[results_df["strategy"] == strategy].set_index("model")
+        subset = results_df.loc[results_df["strategy"] == strategy].set_index(MODEL_COLUMN)
         subset = subset.loc[[item[0] for item in MODEL_VARIANTS]]
 
         for axis, metric, lower_name, upper_name in [
@@ -440,7 +447,7 @@ def main():
     prices_df = pd.read_csv(RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME)
     predictions_df = load_predictions()
 
-    assert headlines_df["headline_id"].is_unique
+    assert headlines_df[HEADLINE_ID_COLUMN].is_unique
     assert prices_df["ticker"].nunique() == 10
 
     panels, daily_signals_df = create_daily_signal_panels(

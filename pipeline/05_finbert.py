@@ -5,15 +5,19 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from uk_dkcot.config import (
+    FINBERT_MODEL_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
+    HEADLINE_ID_COLUMN,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    KNOWLEDGE_LEVEL_COLUMN,
+    LABEL_PRED_COLUMN,
+    MODEL_ID_COLUMN,
     NO_KNOWLEDGE_LEVEL,
     PROCESSED_DATA_DIR,
     VALID_SENTIMENT_LABELS,
 )
 
 # The model's name comes from https://huggingface.co/ProsusAI/finbert
-MODEL_NAME = "ProsusAI/finbert"
 # A batch size of 32 was selected as a practical setting for inference. NVidia suggests the following (direct quote):
 # "Choose the batch size and the number of inputs and outputs to be divisible by 4 (TF32) / 8(FP16) / 16 (INT8) to run efficiently on Tensor Cores. For best efficiency on A100, choose these parameters to be divisible by 32 (TF32) / 64 (FP16) / 128 (INT8")."
 # Considering an NVidia GTX 3060 used to run this experiment, the number 32 was chosen.
@@ -76,10 +80,10 @@ def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame :
             # Store the prediction the relevant data information
             predictions.append(
                 {
-                    "headline_id": row.headline_id,
-                    "model_id": MODEL_NAME,
-                    "knowledge_level": NO_KNOWLEDGE_LEVEL,
-                    "label_pred": predicted_label,
+                    HEADLINE_ID_COLUMN: row.headline_id,
+                    MODEL_ID_COLUMN: FINBERT_MODEL_NAME,
+                    KNOWLEDGE_LEVEL_COLUMN: NO_KNOWLEDGE_LEVEL,
+                    LABEL_PRED_COLUMN: predicted_label,
                     "raw_output": json.dumps(finBERT_score_output, sort_keys=True),
                     "parse_ok": True,
                 }
@@ -101,11 +105,11 @@ def main():
     # Choose "cuda"  if it is available, otherwise default to "cpu"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    print(f"Loading model: {MODEL_NAME}")
+    print(f"Loading model: {FINBERT_MODEL_NAME}")
 
     # Create a single instance of the tokeniser and pass into the `predict_headlines` definition instead of creating multiple instances within the `predict_headlines` definition
-    tokeniser = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+    tokeniser = AutoTokenizer.from_pretrained(FINBERT_MODEL_NAME)
+    model = AutoModelForSequenceClassification.from_pretrained(FINBERT_MODEL_NAME)
     model.to(device)
     model.eval()
 
@@ -123,12 +127,12 @@ def main():
     # Ensure both dataframes are the same size
     assert len(finBERT_predictions_df) == len(headlined_aligned_prices_df)
     # Ensure that the below finBERT_predictions_df is valid
-    assert set(finBERT_predictions_df["label_pred"]).issubset(VALID_SENTIMENT_LABELS)
+    assert set(finBERT_predictions_df[LABEL_PRED_COLUMN]).issubset(VALID_SENTIMENT_LABELS)
 
     finBERT_predictions_df.to_csv(output_path, index=False)
 
     print("Prediction counts:")
-    print(finBERT_predictions_df["label_pred"].value_counts().to_string())
+    print(finBERT_predictions_df[LABEL_PRED_COLUMN].value_counts().to_string())
     print(f"Saved predictions to {output_path}")
 
 

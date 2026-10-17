@@ -10,7 +10,11 @@ from uk_dkcot.config import (
     NO_KNOWLEDGE_LEVEL,
     DKCOT_MODEL_NAME,
     DKCOT_PREDICTIONS_CSV_FILE_NAME,
+    HEADLINE_ID_COLUMN,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
+    KNOWLEDGE_LEVEL_COLUMN,
+    LABEL_PRED_COLUMN,
+    MODEL_ID_COLUMN,
     NEUTRAL_LABEL,
     SECTOR_KNOWLEDGE_LEVEL,
     PROCESSED_DATA_DIR,
@@ -27,10 +31,10 @@ BATCH_SIZE = 16
 # https://huggingface.co/docs/transformers/main_classes/text_generation
 MAX_NEW_TOKENS = 128
 OUTPUT_COLUMNS = [
-    "headline_id",
-    "model_id",
-    "knowledge_level",
-    "label_pred",
+    HEADLINE_ID_COLUMN,
+    MODEL_ID_COLUMN,
+    KNOWLEDGE_LEVEL_COLUMN,
+    LABEL_PRED_COLUMN,
     "raw_output",
     "parse_ok",
 ]
@@ -207,7 +211,7 @@ def load_completed_keys(output_path):
 
     # `zip` pairs values from the two columns:
     return set(
-        zip(existing_df["headline_id"], existing_df["knowledge_level"])
+        zip(existing_df[HEADLINE_ID_COLUMN], existing_df[KNOWLEDGE_LEVEL_COLUMN])
     )
 
 
@@ -239,7 +243,7 @@ def main():
     output_path = PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME
 
     headlines_aligned_prices_df = pd.read_csv(input_path)
-    required_columns = ["headline_id", "ticker", "headline_text"]
+    required_columns = [HEADLINE_ID_COLUMN, "ticker", "headline_text"]
 
     # Load the companies and assign them to a dictionary
     companies: [str, Company] = {company.ticker: company for company in load_companies()}
@@ -293,10 +297,10 @@ def main():
                 # Append the completed prediction in memory
                 predictions.append(
                     {
-                        "headline_id": row.headline_id,
-                        "model_id": DKCOT_MODEL_NAME,
-                        "knowledge_level": knowledge_level,
-                        "label_pred": label_pred,
+                        HEADLINE_ID_COLUMN: row.headline_id,
+                        MODEL_ID_COLUMN: DKCOT_MODEL_NAME,
+                        KNOWLEDGE_LEVEL_COLUMN: knowledge_level,
+                        LABEL_PRED_COLUMN: label_pred,
                         "raw_output": raw_output,
                         "parse_ok": parse_ok,
                     }
@@ -318,7 +322,7 @@ def main():
   
     print("---------------------------------Prediction counts by knowledge level:---------------------------------")
     print(
-        predictions_results_df.groupby(["knowledge_level", "label_pred"])
+        predictions_results_df.groupby([KNOWLEDGE_LEVEL_COLUMN, LABEL_PRED_COLUMN])
         .size()
         .to_string()
     )

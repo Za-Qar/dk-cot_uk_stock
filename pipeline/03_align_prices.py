@@ -3,6 +3,7 @@ import pandas as pd
 
 from uk_dkcot.config import (
     GDELT_HEADLINES_CLEAN_CSV_FILE_NAME,
+    HEADLINE_ID_COLUMN,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
     PD_DATE_FORMAT,
     PROCESSED_DATA_DIR,
@@ -114,11 +115,11 @@ def main():
 
     aligned_df.insert(
         0,
-        "headline_id",
+        HEADLINE_ID_COLUMN,
         aligned_df.apply(create_headline_id, axis=1),
     )
     # Confirm that every generated headline identifier is unique
-    assert aligned_df["headline_id"].is_unique
+    assert aligned_df[HEADLINE_ID_COLUMN].is_unique
 
     # Save both date columns in a consistent year-month-day format
     aligned_df[HEADLINE_DATE_LONDON_COLUMN] = aligned_df[

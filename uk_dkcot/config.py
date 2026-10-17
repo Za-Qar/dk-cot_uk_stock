@@ -43,6 +43,16 @@ NEUTRAL_LABEL = "neutral"
 NEGATIVE_LABEL = "negative"
 VALID_SENTIMENT_LABELS = {POSITIVE_LABEL, NEUTRAL_LABEL, NEGATIVE_LABEL}
 
+# Shared DataFrame and output-table column names
+HEADLINE_ID_COLUMN = "headline_id"
+LABEL_GOLD_COLUMN = "label_gold"
+LABEL_PRED_COLUMN = "label_pred"
+KNOWLEDGE_LEVEL_COLUMN = "knowledge_level"
+MODEL_COLUMN = "model"
+MODEL_ID_COLUMN = "model_id"
+ACCURACY_COLUMN = "accuracy"
+MACRO_F1_COLUMN = "macro_f1"
+
 # Shared DK-CoT experiment configuration
 DKCOT_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
 NO_KNOWLEDGE_LEVEL = "none"
@@ -53,6 +63,10 @@ DKCOT_KNOWLEDGE_LEVELS = (
     SECTOR_KNOWLEDGE_LEVEL,
     FIRM_KNOWLEDGE_LEVEL,
 )
+
+# Shared FinBERT experiment configuration
+FINBERT_DISPLAY_NAME = "FinBERT"
+FINBERT_MODEL_NAME = "ProsusAI/finbert"
 
 # The date format string `%Y-%m-%d` (https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html) removes the time and keeps the year-month-day. This is done to ensure a consistent format to match with headline trading dates later.
 PD_DATE_FORMAT = "%Y-%m-%d"
