@@ -22,7 +22,6 @@ from uk_dkcot.config import (
     load_companies,
 )
 
-
 # Qwen2.5-3B-Instruct is an LLM that maintains a KV (key-value) cache while producing tokens. Processing more prompts increases GPU memory use. Therefore, a batch size of 16 was selected (as opposed to 32 like FinBERT) considering it requires more GPU memory (from the NVIDIA GeForce RTX 3060 used for this research)
 # https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
 # https://huggingface.co/docs/transformers/kv_cache
@@ -62,7 +61,7 @@ def build_prompt(headline, company, knowledge_level) -> str:
 
     knowledge = build_knowledge(company, knowledge_level)
 
-    # This prompt was translated from the original Mandarin used by Chen et al. (2025) to English with some adaptations discussed in the dissertation report. The translation was done by Chat GPT 
+    # This prompt was translated from the original Mandarin used by Chen et al. (2025) to English with some adaptations discussed in the dissertation report. The translation was done by Chat GPT
     return f"""You are an expert in UK financial-news sentiment classification.
 
             Classify the likely sentiment of the headline for investors in the named company:
@@ -129,13 +128,17 @@ def load_model():
     # Many prompts are processed together in one batch, but may contain different numbers of tokens. This adds padding tokens to the beginning of shorter prompts so every prompt has the same length and still end with its real text. This is required for reliable batched generation
     # https://huggingface.co/docs/transformers/llm_tutorial#padding-side
     tokeniser.padding_side = "left"
-    
+
     # Load the pretrained Qwen language model using half precision to reduce memory use. `low_cpu_mem_usage=True` reduces temporary memory use while the model is loading.
-    model = AutoModelForCausalLM.from_pretrained(
-        DKCOT_MODEL_NAME,
-        dtype=torch.float16,
-        low_cpu_mem_usage=True,
-    ).to(device).eval()
+    model = (
+        AutoModelForCausalLM.from_pretrained(
+            DKCOT_MODEL_NAME,
+            dtype=torch.float16,
+            low_cpu_mem_usage=True,
+        )
+        .to(device)
+        .eval()
+    )
 
     # This disables random sampling so Qwen selects the highest-probability token at each step. The reasoning behind this is explained in the dissertation report.
     # https://huggingface.co/docs/transformers/generation_strategies
@@ -177,10 +180,14 @@ def generate_responses(prompts, tokenizer, model):
             do_sample=False,
         )
 
-    print("---------------------------------Formatted prompt:---------------------------------")
+    print(
+        "---------------------------------Formatted prompt:---------------------------------"
+    )
     print(chat_prompts[0])
 
-    print("---------------------------------Token tensor shape:---------------------------------")
+    print(
+        "---------------------------------Token tensor shape:---------------------------------"
+    )
     print(model_inputs[INPUT_IDS_KEY].shape)
 
     # Obtain the padded input length. Qwen's returned sequences contain both the original prompt tokens and the newly generated response tokens.
@@ -188,17 +195,19 @@ def generate_responses(prompts, tokenizer, model):
     # Convert every generated response from token IDs back into readable text.
     return [
         tokenizer.decode(
-            output_tokens[input_length:], # Remove the original prompt tokens and retain only Qwen's response
-            skip_special_tokens=True, # Remove Qwen's internal formatting tokens from the decoded response
-        ).strip() # Remove any whitespace from around the response
+            output_tokens[
+                input_length:
+            ],  # Remove the original prompt tokens and retain only Qwen's response
+            skip_special_tokens=True,  # Remove Qwen's internal formatting tokens from the decoded response
+        ).strip()  # Remove any whitespace from around the response
         for output_tokens in generated_tokens
     ]
 
 
 def load_completed_keys(output_path):
     """
-    Read completed predictions so an interrupted long run can resume. This  can be considered a non-functional requirement to save time and continue off from the last point of process if something were to go wrong with the processing. To load checkpoints, saving them (in the `save_checkpoint` def) is required. 
-    
+    Read completed predictions so an interrupted long run can resume. This  can be considered a non-functional requirement to save time and continue off from the last point of process if something were to go wrong with the processing. To load checkpoints, saving them (in the `save_checkpoint` def) is required.
+
     It follows the concept of the "Checkpoint/Restart Processing" outlined here: https://www.ibm.com/docs/en/zos/3.1.0?topic=checkpointrestart-processing
     """
 
@@ -218,8 +227,8 @@ def load_completed_keys(output_path):
 def save_checkpoint(predictions, output_path) -> None:
     """
     Append a small prediction batch without losing the CSV progess
-    
-    This follows the concept (design pattern) of the "Checkpoint/Restart Processing" outlined here: https://www.ibm.com/docs/en/zos/3.1.0?topic=checkpointrestart-processing 
+
+    This follows the concept (design pattern) of the "Checkpoint/Restart Processing" outlined here: https://www.ibm.com/docs/en/zos/3.1.0?topic=checkpointrestart-processing
     """
 
     if not predictions:
@@ -228,7 +237,7 @@ def save_checkpoint(predictions, output_path) -> None:
     # Convert the list of prediction dictionaries into a dataframe with the expected column order
     pd.DataFrame(predictions, columns=OUTPUT_COLUMNS).to_csv(
         output_path,
-        mode="a", # "a" is to append to the existing CSV instead of overwriting
+        mode="a",  # "a" is to append to the existing CSV instead of overwriting
         header=not output_path.exists(),
         index=False,
     )
@@ -246,14 +255,18 @@ def main():
     required_columns = [HEADLINE_ID_COLUMN, "ticker", "headline_text"]
 
     # Load the companies and assign them to a dictionary
-    companies: [str, Company] = {company.ticker: company for company in load_companies()}
+    companies: [str, Company] = {
+        company.ticker: company for company in load_companies()
+    }
 
     # Check the checkpoint
     completed_keys = load_completed_keys(output_path)
     # Calculate the amount of DK-CoT predictions that should exist when processing is completed (this is used for the checkpoint logic)
     total_predictions = len(headlines_aligned_prices_df) * len(DKCOT_KNOWLEDGE_LEVELS)
 
-    print("---------------------------------Loading model:---------------------------------")
+    print(
+        "---------------------------------Loading model:---------------------------------"
+    )
     print(DKCOT_MODEL_NAME)
 
     tokenizer, model = load_model()
@@ -276,7 +289,9 @@ def main():
         # Process the pending headlines in batches of 16
         for start_index in range(0, len(pending_predictions_headline_rows), BATCH_SIZE):
             # Select the current group of up to 16 headline rows
-            batch_rows = pending_predictions_headline_rows[start_index:start_index + BATCH_SIZE]
+            batch_rows = pending_predictions_headline_rows[
+                start_index : start_index + BATCH_SIZE
+            ]
             # Build one DK-CoT prompt for every headline in the current batch and assign to a list
             prompts = [
                 build_prompt(
@@ -310,7 +325,9 @@ def main():
             completed_predictions_count += len(batch_rows)
             # Append this batch to the CSV and clear the predictions list
             save_checkpoint(predictions, output_path)
-            print("---------------------------------Processed predictions count::---------------------------------")
+            print(
+                "---------------------------------Processed predictions count::---------------------------------"
+            )
             print(
                 f"Processed {completed_predictions_count:,} / "
                 f"{total_predictions:,} predictions"
@@ -319,8 +336,10 @@ def main():
     save_checkpoint(predictions, output_path)
 
     predictions_results_df = pd.read_csv(output_path)
-  
-    print("---------------------------------Prediction counts by knowledge level:---------------------------------")
+
+    print(
+        "---------------------------------Prediction counts by knowledge level:---------------------------------"
+    )
     print(
         predictions_results_df.groupby([KNOWLEDGE_LEVEL_COLUMN, LABEL_PRED_COLUMN])
         .size()

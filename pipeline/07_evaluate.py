@@ -22,6 +22,7 @@ from uk_dkcot.config import (
     FIGURE_NAVY,
     FIGURE_PRIMARY_TEAL,
     FIGURE_SECONDARY_TEAL,
+    get_figure_font_settings,
     GOLD_LABELS_CSV_FILE_NAME,
     HEADLINE_ID_COLUMN,
     KNOWLEDGE_LEVEL_COLUMN,
@@ -39,7 +40,6 @@ from uk_dkcot.config import (
     PROJECT_ROOT,
 )
 
-
 SENTIMENT_LABELS = [NEGATIVE_LABEL, NEUTRAL_LABEL, POSITIVE_LABEL]
 BOOTSTRAP_ITERATIONS = 2_000
 RANDOM_SEED = 2025
@@ -52,6 +52,7 @@ MODEL_VARIANTS = [
     ],
 ]
 
+
 # Create class to use as type for the McNemar results
 class McNemarTestResult(TypedDict):
     model_a: str
@@ -61,9 +62,11 @@ class McNemarTestResult(TypedDict):
     p_value: float
     significant_at_0_05: bool
 
+
 class ClassificationMetrics(TypedDict):
-    accuracy: float # Must match the variable ACCURACY_COLUMN from the config.py
-    macro_f1: float # Must match the variable MACRO_F1_COLUMN from the config.py
+    accuracy: float  # Must match the variable ACCURACY_COLUMN from the config.py
+    macro_f1: float  # Must match the variable MACRO_F1_COLUMN from the config.py
+
 
 class BootstrapConfidenceIntervals(TypedDict):
     accuracy_ci_lower: float
@@ -87,7 +90,9 @@ def calculate_accuracy_and_f1_score(gold_labels, predictions) -> ClassificationM
     )
 
 
-def calculate_bootstrap_confidence_intervals(gold_labels, model_predictions, seed) -> BootstrapConfidenceIntervals:
+def calculate_bootstrap_confidence_intervals(
+    gold_labels, model_predictions, seed
+) -> BootstrapConfidenceIntervals:
     """Estimate 95% confidence intervals by resampling headlines"""
 
     # Convert labels into NumPy arrays
@@ -177,14 +182,22 @@ def get_mcnemar_test_values(first_correct, second_correct) -> tuple[int, int, fl
     return n1, n2, p_value
 
 
-def load_and_get_gold_labels_and_model_predictions_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_get_gold_labels_and_model_predictions_data() -> (
+    tuple[pd.DataFrame, pd.DataFrame]
+):
     """Load gold labels and all four model prediction variants."""
 
     gold_labels_df = pd.read_csv(PROCESSED_DATA_DIR / GOLD_LABELS_CSV_FILE_NAME)
-    finbert_predictions_df = pd.read_csv(PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME)
-    dkcot_predictions_df = pd.read_csv(PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME)
+    finbert_predictions_df = pd.read_csv(
+        PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME
+    )
+    dkcot_predictions_df = pd.read_csv(
+        PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME
+    )
 
-    predictions_df = pd.concat([finbert_predictions_df, dkcot_predictions_df], ignore_index=True)
+    predictions_df = pd.concat(
+        [finbert_predictions_df, dkcot_predictions_df], ignore_index=True
+    )
 
     return gold_labels_df, predictions_df
 
@@ -240,7 +253,9 @@ def evaluate_models(gold_labels_df, predictions_df):
     return pd.DataFrame(result_rows), gold_and_predicted_labels_by_model
 
 
-def run_mcnemar_tests_per_model_variant(gold_and_predicted_labels_by_model) -> pd.DataFrame:
+def run_mcnemar_tests_per_model_variant(
+    gold_and_predicted_labels_by_model,
+) -> pd.DataFrame:
     """Run McNemar tests for every pair of model variants."""
 
     # Use to store the results
@@ -259,7 +274,9 @@ def run_mcnemar_tests_per_model_variant(gold_and_predicted_labels_by_model) -> p
         # DK-CoT (none) with DK-CoT (sector)
         # DK-CoT (none) with DK-CoT (firm)
         # DK-CoT (sector) with DK-CoT (firm)
-        print("---------------------------------Models being compared together:---------------------------------")
+        print(
+            "---------------------------------Models being compared together:---------------------------------"
+        )
         print(f"Comparing {first_model_name} with {second_model_name}")
 
         # Obtain the gold and predicted labels for each model
@@ -274,14 +291,18 @@ def run_mcnemar_tests_per_model_variant(gold_and_predicted_labels_by_model) -> p
         )
 
         first_model_correct_by_headline = (
-            paired_model_gold_and_predicted_labels_df[f"{LABEL_PRED_COLUMN}_first"] == paired_model_gold_and_predicted_labels_df[LABEL_GOLD_COLUMN]
+            paired_model_gold_and_predicted_labels_df[f"{LABEL_PRED_COLUMN}_first"]
+            == paired_model_gold_and_predicted_labels_df[LABEL_GOLD_COLUMN]
         ).to_numpy()
         second_model_correct_by_headline = (
-            paired_model_gold_and_predicted_labels_df[f"{LABEL_PRED_COLUMN}_second"] == paired_model_gold_and_predicted_labels_df[LABEL_GOLD_COLUMN]
+            paired_model_gold_and_predicted_labels_df[f"{LABEL_PRED_COLUMN}_second"]
+            == paired_model_gold_and_predicted_labels_df[LABEL_GOLD_COLUMN]
         ).to_numpy()
-        first_model_only_correct_count, second_model_only_correct_count, p_value = get_mcnemar_test_values(
-            first_model_correct_by_headline,
-            second_model_correct_by_headline,
+        first_model_only_correct_count, second_model_only_correct_count, p_value = (
+            get_mcnemar_test_values(
+                first_model_correct_by_headline,
+                second_model_correct_by_headline,
+            )
         )
 
         mcnemar_result = McNemarTestResult(
@@ -301,7 +322,7 @@ def run_mcnemar_tests_per_model_variant(gold_and_predicted_labels_by_model) -> p
 def create_accuracy_and_macro_f1_figure(results_df, output_path):
     """Create a figure for the comparison of accuracy and Macro-F1."""
 
-    plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 10})
+    plt.rcParams.update(get_figure_font_settings(10))
     positions = np.arange(len(results_df))
     width = 0.36
     colours = {
@@ -375,7 +396,9 @@ def create_confusion_matrices_for_each_model_variant(paired_predictions, output_
                     color=colour,
                 )
         axis.set_title(name)
-        axis.set_xticks(range(len(SENTIMENT_LABELS)), SENTIMENT_LABELS, rotation=25, ha="right")
+        axis.set_xticks(
+            range(len(SENTIMENT_LABELS)), SENTIMENT_LABELS, rotation=25, ha="right"
+        )
         axis.set_yticks(range(len(SENTIMENT_LABELS)), SENTIMENT_LABELS)
         axis.set_xlabel("Predicted label")
         axis.set_ylabel("Gold label")
@@ -404,7 +427,9 @@ def main():
     results_df, paired_predictions = evaluate_models(gold_df, predictions_df)
     mc_nemar_tests_df = run_mcnemar_tests_per_model_variant(paired_predictions)
 
-    classification_results_path = tables_directory / CLASSIFICATION_RESULTS_CSV_FILE_NAME
+    classification_results_path = (
+        tables_directory / CLASSIFICATION_RESULTS_CSV_FILE_NAME
+    )
     significance_path = tables_directory / PAIRED_SIGNIFICANCE_TESTS_CSV_FILE_NAME
     results_df.to_csv(classification_results_path, index=False)
     mc_nemar_tests_df.to_csv(significance_path, index=False)

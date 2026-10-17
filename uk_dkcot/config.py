@@ -11,6 +11,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
+
 # Shared input and output filenames
 COMPANIES_CSV_FILE_NAME = "companies.csv"
 GDELT_HEADLINES_CSV_FILE_NAME = "gdelt_headlines.csv"
@@ -30,12 +31,16 @@ BACKTEST_RESULTS_CSV_FILE_NAME = "backtest_results.csv"
 BACKTEST_SUMMARY_CSV_FILE_NAME = "backtest_summary.csv"
 COMPANIES_PATH = PROJECT_ROOT / "config" / COMPANIES_CSV_FILE_NAME
 
+
 # Figures created and their respective names
 CLASSIFICATION_METRICS_PNG_FILE_NAME = "classification_metrics.png"
-CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME = "classification_confusion_matrices.png"
+CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME = (
+    "classification_confusion_matrices.png"
+)
 BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME = "backtest_cumulative_returns.png"
 BACKTEST_METRICS_PNG_FILE_NAME = "backtest_metrics.png"
 BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME = "backtest_summary_table.png"
+
 
 # Shared figure colours. This is to maintain consistency with the colours used for the graphics in the reports and poster and the graphics generated in the codebase
 FIGURE_PRIMARY_TEAL = "#006363"
@@ -43,12 +48,15 @@ FIGURE_SECONDARY_TEAL = "#0A6A70"
 FIGURE_DARK_TEAL = "#09424C"
 FIGURE_DEEP_BLUE = "#122E52"
 FIGURE_NAVY = "#0D1427"
+FIGURE_FONT_FAMILY = "DejaVu Serif"
+
 
 # Shared sentiment labels used by manual labelling and model evaluation
 POSITIVE_LABEL = "positive"
 NEUTRAL_LABEL = "neutral"
 NEGATIVE_LABEL = "negative"
 VALID_SENTIMENT_LABELS = {POSITIVE_LABEL, NEUTRAL_LABEL, NEGATIVE_LABEL}
+
 
 # Shared DataFrame and output-table column names
 HEADLINE_ID_COLUMN = "headline_id"
@@ -59,6 +67,7 @@ MODEL_COLUMN = "model"
 MODEL_ID_COLUMN = "model_id"
 ACCURACY_COLUMN = "accuracy"
 MACRO_F1_COLUMN = "macro_f1"
+
 
 # Shared DK-CoT experiment configuration
 DKCOT_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
@@ -71,12 +80,15 @@ DKCOT_KNOWLEDGE_LEVELS = (
     FIRM_KNOWLEDGE_LEVEL,
 )
 
+
 # Shared FinBERT experiment configuration
 FINBERT_DISPLAY_NAME = "FinBERT"
 FINBERT_MODEL_NAME = "ProsusAI/finbert"
 
+
 # The date format string `%Y-%m-%d` (https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html) removes the time and keeps the year-month-day. This is done to ensure a consistent format to match with headline trading dates later.
 PD_DATE_FORMAT = "%Y-%m-%d"
+
 
 # Other config-relevant constants
 START_DATE = "2025-01-01"
@@ -115,6 +127,7 @@ def load_companies(path: str | Path = COMPANIES_PATH) -> list[Company]:
             for row in reader
         ]
 
+
 class Ticker(StrEnum):
     ASTRAZENECA = "AZN.L"
     HSBC = "HSBA.L"
@@ -126,3 +139,12 @@ class Ticker(StrEnum):
     HALMA = "HLMA.L"
     SMITH_AND_NEPHEW = "SN.L"
     INTERTEK = "ITRK.L"
+
+
+def get_figure_font_settings(font_size):
+    """Return the shared figure font family with the requested font size."""
+
+    return {
+        "font.family": FIGURE_FONT_FAMILY,
+        "font.size": font_size,
+    }

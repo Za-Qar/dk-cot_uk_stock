@@ -35,8 +35,8 @@ from uk_dkcot.config import (
     PROJECT_ROOT,
     RAW_DATA_DIR,
     YFINANCE_PRICES_CSV_FILE_NAME,
+    get_figure_font_settings,
 )
-
 
 SENTIMENT_SCORES = {NEGATIVE_LABEL: -1, NEUTRAL_LABEL: 0, POSITIVE_LABEL: 1}
 TRANSACTION_COST_BPS = 10
@@ -56,6 +56,43 @@ MODEL_VARIANTS = [
     ],
 ]
 
+# Local DataFrame column names used throughout the backtest.
+DATE_COLUMN = "date"
+TICKER_COLUMN = "ticker"
+TRADE_DATE_COLUMN = "trade_date"
+OPEN_COLUMN = "open"
+NEXT_OPEN_COLUMN = "next_open"
+SENTIMENT_SCORE_COLUMN = "sentiment_score"
+POSITION_COLUMN = "position"
+STRATEGY_COLUMN = "strategy"
+STRATEGY_POSITION_COLUMN = "strategy_position"
+TURNOVER_COLUMN = "turnover"
+FORWARD_RETURN_COLUMN = "forward_return"
+GROSS_RETURN_COLUMN = "gross_return"
+TRANSACTION_COST_COLUMN = "transaction_cost"
+NET_RETURN_COLUMN = "net_return"
+ACTIVE_TRADE_COLUMN = "active_trade"
+CORRECT_TRADE_COLUMN = "correct_trade"
+ACTIVE_TRADES_COLUMN = "active_trades"
+CORRECT_TRADES_COLUMN = "correct_trades"
+CUMULATIVE_RETURN_COLUMN = "cumulative_return"
+SHARPE_RATIO_COLUMN = "Sharpe_ratio"
+SHARPE_CI_LOWER_COLUMN = "Sharpe_ci_lower"
+SHARPE_CI_UPPER_COLUMN = "Sharpe_ci_upper"
+HIT_RATE_COLUMN = "hit_rate"
+HIT_RATE_CI_LOWER_COLUMN = "hit_rate_ci_lower"
+HIT_RATE_CI_UPPER_COLUMN = "hit_rate_ci_upper"
+TRADING_DAYS_COLUMN = "trading_days"
+TRANSACTION_COST_BPS_COLUMN = "transaction_cost_bps"
+
+# Local display-column names used in the dissertation backtest table and figure.
+CONDITION_REPORT_COLUMN = "Condition"
+STRATEGY_REPORT_COLUMN = "Strategy"
+SHARPE_RATIO_REPORT_COLUMN = "Sharpe ratio"
+HIT_RATE_REPORT_COLUMN = "Hit rate (%)"
+CUMULATIVE_RETURN_REPORT_COLUMN = "Cumulative net return (%)"
+ACTIVE_TRADES_REPORT_COLUMN = "Active company-days"
+
 
 class BacktestConfidenceIntervals(TypedDict):
     Sharpe_ci_lower: float
@@ -64,291 +101,464 @@ class BacktestConfidenceIntervals(TypedDict):
     hit_rate_ci_upper: float
 
 
-def calculate_sharpe(daily_returns):
+class BacktestResult(TypedDict):
+    model: str
+    model_id: str
+    knowledge_level: str
+    strategy: str
+    Sharpe_ratio: float
+    Sharpe_ci_lower: float
+    Sharpe_ci_upper: float
+    hit_rate_ci_lower: float
+    hit_rate_ci_upper: float
+    hit_rate: float
+    cumulative_return: float
+    active_trades: int
+    trading_days: int
+    transaction_cost_bps: int
+
+
+def calculate_annualised_sharpe_ratio(daily_returns) -> float:
     """Calculate annualised Sharpe ratio with a zero risk-free rate."""
 
-    returns = np.asarray(daily_returns, dtype=float)
-    standard_deviation = returns.std(ddof=1)
-    if standard_deviation == 0 or np.isnan(standard_deviation):
+    # Convert the daily returns into a NumPy array and calculate their sample standard deviation.
+    daily_returns_np_array = np.asarray(daily_returns, dtype=float)
+    daily_returns_standard_deviation = daily_returns_np_array.std(ddof=1)
+
+    # A constant return series has no measurable volatility, so its Sharpe ratio is returned as zero.
+    if daily_returns_standard_deviation == 0 or np.isnan(
+        daily_returns_standard_deviation
+    ):
         return 0.0
-    return np.sqrt(252) * returns.mean() / standard_deviation
 
-
-def calculate_sharpe_and_hit_ratio(daily_results, seed) -> BacktestConfidenceIntervals:
-    """Estimate Sharpe and hit-rate intervals using five-day blocks."""
-
-    random_generator = np.random.default_rng(seed)
-    day_count = len(daily_results)
-    block_count = int(np.ceil(day_count / BLOCK_LENGTH))
-    maximum_start = day_count - BLOCK_LENGTH + 1
-    sharpe_values = []
-    hit_rate_values = []
-
-    for _ in range(BOOTSTRAP_ITERATIONS):
-        starts = random_generator.integers(0, maximum_start, block_count)
-        indices = np.concatenate(
-            [np.arange(start, start + BLOCK_LENGTH) for start in starts]
-        )[:day_count]
-        sample = daily_results.iloc[indices]
-        sharpe_values.append(calculate_sharpe(sample["net_return"]))
-
-        active_trades = sample["active_trades"].sum()
-        hit_rate_values.append(
-            sample["correct_trades"].sum() / active_trades
-            if active_trades
-            else 0.0
-        )
-
-    return BacktestConfidenceIntervals(
-        Sharpe_ci_lower=np.quantile(sharpe_values, 0.025),
-        Sharpe_ci_upper=np.quantile(sharpe_values, 0.975),
-        hit_rate_ci_lower=np.quantile(hit_rate_values, 0.025),
-        hit_rate_ci_upper=np.quantile(hit_rate_values, 0.975),
+    # Sharpe (1966) introduced the reward-to-variability measure now known as the Sharpe ratio.
+    # https://doi.org/10.1086/294846
+    # Multiplication by the square root of 252 annualises a daily ratio under the usual independent-return assumption. Lo (2002) explains why serial correlation can affect this scaling.
+    # https://doi.org/10.2469/faj.v58.n4.2453
+    return (
+        np.sqrt(252) * daily_returns_np_array.mean() / daily_returns_standard_deviation
     )
 
 
-def load_predictions():
+def calculate_backtest_confidence_intervals(
+    daily_backtest_results_df,
+    seed,
+) -> BacktestConfidenceIntervals:
+    """Estimate Sharpe and hit-rate intervals using five-day blocks."""
+
+    # Create a reproducible random-number generator using the supplied seed.
+    random_generator = np.random.default_rng(seed)
+    trading_day_count = len(daily_backtest_results_df)
+    bootstrap_block_count = int(np.ceil(trading_day_count / BLOCK_LENGTH))
+    maximum_block_start_index = trading_day_count - BLOCK_LENGTH + 1
+    bootstrap_sharpe_ratio_values = []
+    bootstrap_hit_rate_values = []
+
+    # Sample consecutive five-day blocks with replacement. This retains the ordering within each selected trading week rather than treating every daily return as independent.
+    # This follows the moving-block bootstrap introduced for dependent observations by Kunsch (1989).
+    # https://doi.org/10.1214/aos/1176347265
+    for _ in range(BOOTSTRAP_ITERATIONS):
+        bootstrap_block_start_indices = random_generator.integers(
+            0,
+            maximum_block_start_index,
+            bootstrap_block_count,
+        )
+        bootstrap_sample_indices = np.concatenate(
+            [
+                np.arange(start_index, start_index + BLOCK_LENGTH)
+                for start_index in bootstrap_block_start_indices
+            ]
+        )[:trading_day_count]
+        bootstrap_sample_df = daily_backtest_results_df.iloc[bootstrap_sample_indices]
+        bootstrap_sharpe_ratio_values.append(
+            calculate_annualised_sharpe_ratio(bootstrap_sample_df[NET_RETURN_COLUMN])
+        )
+
+        bootstrap_active_trade_count = bootstrap_sample_df[ACTIVE_TRADES_COLUMN].sum()
+        bootstrap_hit_rate_values.append(
+            bootstrap_sample_df[CORRECT_TRADES_COLUMN].sum()
+            / bootstrap_active_trade_count
+            if bootstrap_active_trade_count
+            else 0.0
+        )
+
+    # Use the 2.5th and 97.5th percentiles as the limits of each 95% percentile-bootstrap confidence interval.
+    # NumPy quantile documentation: https://numpy.org/doc/stable/reference/generated/numpy.quantile.html
+    return BacktestConfidenceIntervals(
+        Sharpe_ci_lower=np.quantile(bootstrap_sharpe_ratio_values, 0.025),
+        Sharpe_ci_upper=np.quantile(bootstrap_sharpe_ratio_values, 0.975),
+        hit_rate_ci_lower=np.quantile(bootstrap_hit_rate_values, 0.025),
+        hit_rate_ci_upper=np.quantile(bootstrap_hit_rate_values, 0.975),
+    )
+
+
+def load_FinBERT_and_DK_CoT_predictions() -> pd.DataFrame:
     """Load FinBERT and DK-CoT predictions under one shared schema."""
 
-    finbert_df = pd.read_csv(PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME)
-    dkcot_df = pd.read_csv(PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME)
-    return pd.concat([finbert_df, dkcot_df], ignore_index=True)
+    finbert_predictions_df = pd.read_csv(
+        PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME
+    )
+    dkcot_predictions_df = pd.read_csv(
+        PROCESSED_DATA_DIR / DKCOT_PREDICTIONS_CSV_FILE_NAME
+    )
+
+    return pd.concat(
+        [finbert_predictions_df, dkcot_predictions_df],
+        ignore_index=True,
+    )
 
 
-def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
+def create_daily_sentiment_signal_panels(
+    headlines_aligned_prices_df,
+    yfinance_prices_df,
+    model_predictions_df,
+) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """Aggregate headline sentiment and build one daily panel per model."""
 
-    headline_keys = headlines_df[[HEADLINE_ID_COLUMN, "ticker", "trade_date"]]
-    scored_predictions = predictions_df.merge(
-        headline_keys,
+    # Retain the identifiers needed to connect every prediction to its company and aligned trading date.
+    headline_trade_dates_df = headlines_aligned_prices_df[
+        [HEADLINE_ID_COLUMN, TICKER_COLUMN, TRADE_DATE_COLUMN]
+    ]
+    sentiment_scored_predictions_df = model_predictions_df.merge(
+        headline_trade_dates_df,
         on=HEADLINE_ID_COLUMN,
         how="inner",
         validate="many_to_one",
     )
-    scored_predictions["sentiment_score"] = scored_predictions[LABEL_PRED_COLUMN].map(
-        SENTIMENT_SCORES
+    # Convert each sentiment label into a directional score: negative=-1, neutral=0 and positive=1.
+    sentiment_scored_predictions_df[SENTIMENT_SCORE_COLUMN] = (
+        sentiment_scored_predictions_df[LABEL_PRED_COLUMN].map(SENTIMENT_SCORES)
     )
 
-    daily_scores = (
-        scored_predictions.groupby(
-            ["trade_date", "ticker", MODEL_ID_COLUMN, KNOWLEDGE_LEVEL_COLUMN],
-            as_index=False,
-        )
-        .agg(
-            sentiment_score=("sentiment_score", "mean"),
-        )
+    # Average multiple headlines for the same company and trading date into one daily score per model variant.
+    daily_sentiment_scores_df = sentiment_scored_predictions_df.groupby(
+        [
+            TRADE_DATE_COLUMN,
+            TICKER_COLUMN,
+            MODEL_ID_COLUMN,
+            KNOWLEDGE_LEVEL_COLUMN,
+        ],
+        as_index=False,
+    ).agg(
+        sentiment_score=(SENTIMENT_SCORE_COLUMN, "mean"),
     )
 
-    prices = prices_df.copy()
-    prices["date"] = pd.to_datetime(prices["date"])
-    prices = prices.sort_values(["ticker", "date"])
-    prices["next_open"] = prices.groupby("ticker")["open"].shift(-1)
-    prices["forward_return"] = prices["next_open"] / prices["open"] - 1
-    prices["date"] = prices["date"].dt.strftime(PD_DATE_FORMAT)
+    prices_with_forward_returns_df = yfinance_prices_df.copy()
+    prices_with_forward_returns_df[DATE_COLUMN] = pd.to_datetime(
+        prices_with_forward_returns_df[DATE_COLUMN]
+    )
+    prices_with_forward_returns_df = prices_with_forward_returns_df.sort_values(
+        [TICKER_COLUMN, DATE_COLUMN]
+    )
 
-    panels = {}
-    output_rows = []
+    # Within each company, place the following trading day's opening price on the current row.
+    # Pandas GroupBy.shift: https://pandas.pydata.org/docs/reference/api/pandas.core.groupby.SeriesGroupBy.shift.html
+    prices_with_forward_returns_df[NEXT_OPEN_COLUMN] = (
+        prices_with_forward_returns_df.groupby(TICKER_COLUMN)[OPEN_COLUMN].shift(-1)
+    )
+    prices_with_forward_returns_df[FORWARD_RETURN_COLUMN] = (
+        prices_with_forward_returns_df[NEXT_OPEN_COLUMN]
+        / prices_with_forward_returns_df[OPEN_COLUMN]
+        - 1
+    )
+    prices_with_forward_returns_df[DATE_COLUMN] = prices_with_forward_returns_df[
+        DATE_COLUMN
+    ].dt.strftime(PD_DATE_FORMAT)
 
-    for name, model_id, knowledge_level in MODEL_VARIANTS:
-        model_scores = daily_scores.loc[
-            (daily_scores[MODEL_ID_COLUMN] == model_id)
-            & (daily_scores[KNOWLEDGE_LEVEL_COLUMN] == knowledge_level),
-            ["trade_date", "ticker", "sentiment_score"],
+    daily_signal_panels_by_model = {}
+    daily_signal_dataframes = []
+
+    for model_name, model_id, knowledge_level in MODEL_VARIANTS:
+        model_daily_sentiment_scores_df = daily_sentiment_scores_df.loc[
+            (daily_sentiment_scores_df[MODEL_ID_COLUMN] == model_id)
+            & (daily_sentiment_scores_df[KNOWLEDGE_LEVEL_COLUMN] == knowledge_level),
+            [TRADE_DATE_COLUMN, TICKER_COLUMN, SENTIMENT_SCORE_COLUMN],
         ]
-        panel = prices.merge(
-            model_scores,
-            left_on=["date", "ticker"],
-            right_on=["trade_date", "ticker"],
+        model_daily_signal_panel_df = prices_with_forward_returns_df.merge(
+            model_daily_sentiment_scores_df,
+            left_on=[DATE_COLUMN, TICKER_COLUMN],
+            right_on=[TRADE_DATE_COLUMN, TICKER_COLUMN],
             how="left",
             validate="one_to_one",
         )
-        panel["sentiment_score"] = panel["sentiment_score"].fillna(0.0)
-        panel["position"] = np.sign(panel["sentiment_score"]).astype(int)
-        panel[MODEL_ID_COLUMN] = model_id
-        panel[KNOWLEDGE_LEVEL_COLUMN] = knowledge_level
-        panels[name] = panel
 
-        output_rows.append(
-            panel[
+        # A missing score means no headline signal exists for that company-date, so the position remains zero.
+        model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN] = (
+            model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].fillna(0.0)
+        )
+        model_daily_signal_panel_df[POSITION_COLUMN] = np.sign(
+            model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN]
+        ).astype(int)
+        model_daily_signal_panel_df[MODEL_ID_COLUMN] = model_id
+        model_daily_signal_panel_df[KNOWLEDGE_LEVEL_COLUMN] = knowledge_level
+        daily_signal_panels_by_model[model_name] = model_daily_signal_panel_df
+
+        daily_signal_dataframes.append(
+            model_daily_signal_panel_df[
                 [
-                    "date",
-                    "ticker",
+                    DATE_COLUMN,
+                    TICKER_COLUMN,
                     MODEL_ID_COLUMN,
                     KNOWLEDGE_LEVEL_COLUMN,
-                    "sentiment_score",
-                    "position",
+                    SENTIMENT_SCORE_COLUMN,
+                    POSITION_COLUMN,
                 ]
             ]
         )
 
-    return panels, pd.concat(output_rows, ignore_index=True)
+    return daily_signal_panels_by_model, pd.concat(
+        daily_signal_dataframes,
+        ignore_index=True,
+    )
 
 
-def run_strategy(panel, strategy):
+def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
     """Apply one strategy to a model's daily company-level signals."""
 
-    tested = panel.copy().sort_values(["ticker", "date"])
+    company_backtest_results_df = daily_signal_panel_df.copy().sort_values(
+        [TICKER_COLUMN, DATE_COLUMN]
+    )
+
+    # Long-only uses positive signals and otherwise remains in cash. Long-short also takes a short position for negative signals.
     if strategy == LONG_ONLY:
-        tested["strategy_position"] = tested["position"].clip(lower=0)
+        company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
+            company_backtest_results_df[POSITION_COLUMN].clip(lower=0)
+        )
     elif strategy == LONG_SHORT:
-        tested["strategy_position"] = tested["position"]
+        company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
+            company_backtest_results_df[POSITION_COLUMN]
+        )
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
 
     # A position cannot be tested when the following opening price is unavailable.
-    tested.loc[tested["forward_return"].isna(), "strategy_position"] = 0
-    previous_position = tested.groupby("ticker")["strategy_position"].shift(1)
-    previous_position = previous_position.fillna(0)
-    tested["turnover"] = (tested["strategy_position"] - previous_position).abs()
+    company_backtest_results_df.loc[
+        company_backtest_results_df[FORWARD_RETURN_COLUMN].isna(),
+        STRATEGY_POSITION_COLUMN,
+    ] = 0
 
-    tested["gross_return"] = (
-        tested["strategy_position"] * tested["forward_return"].fillna(0)
-    )
-    tested["transaction_cost"] = (
-        tested["turnover"] * TRANSACTION_COST_BPS / 10_000
-    )
-    tested["net_return"] = tested["gross_return"] - tested["transaction_cost"]
+    # Turnover is the absolute change from the previous position. Entering or leaving a position has turnover one; reversing from short to long has turnover two.
+    previous_strategy_position = company_backtest_results_df.groupby(TICKER_COLUMN)[
+        STRATEGY_POSITION_COLUMN
+    ].shift(1)
+    previous_strategy_position = previous_strategy_position.fillna(0)
+    company_backtest_results_df[TURNOVER_COLUMN] = (
+        company_backtest_results_df[STRATEGY_POSITION_COLUMN]
+        - previous_strategy_position
+    ).abs()
 
-    active = (
-        tested["strategy_position"].ne(0)
-        & tested["forward_return"].notna()
+    # Multiplying the position by the following open-to-open return makes a short position profitable when the price falls.
+    company_backtest_results_df[GROSS_RETURN_COLUMN] = company_backtest_results_df[
+        STRATEGY_POSITION_COLUMN
+    ] * company_backtest_results_df[FORWARD_RETURN_COLUMN].fillna(0)
+    # Divide basis points by 10,000 to express the transaction cost as a decimal return, then deduct it from the gross return.
+    company_backtest_results_df[TRANSACTION_COST_COLUMN] = (
+        company_backtest_results_df[TURNOVER_COLUMN] * TRANSACTION_COST_BPS / 10_000
     )
-    tested["active_trade"] = active.astype(int)
-    tested["correct_trade"] = (
-        active
-        & (tested["strategy_position"] * tested["forward_return"] > 0)
+    company_backtest_results_df[NET_RETURN_COLUMN] = (
+        company_backtest_results_df[GROSS_RETURN_COLUMN]
+        - company_backtest_results_df[TRANSACTION_COST_COLUMN]
+    )
+
+    # An active company-day has a non-zero position and an available following-day return.
+    active_trade_mask = (
+        company_backtest_results_df[STRATEGY_POSITION_COLUMN].ne(0)
+        & company_backtest_results_df[FORWARD_RETURN_COLUMN].notna()
+    )
+    company_backtest_results_df[ACTIVE_TRADE_COLUMN] = active_trade_mask.astype(int)
+    company_backtest_results_df[CORRECT_TRADE_COLUMN] = (
+        active_trade_mask
+        & (
+            company_backtest_results_df[STRATEGY_POSITION_COLUMN]
+            * company_backtest_results_df[FORWARD_RETURN_COLUMN]
+            > 0
+        )
     ).astype(int)
 
     # Each company has a fixed 10% portfolio weight. Unused allocations remain cash.
-    company_count = tested["ticker"].nunique()
-    daily = (
-        tested.groupby("date", as_index=False)
+    company_count = company_backtest_results_df[TICKER_COLUMN].nunique()
+    daily_portfolio_results_df = (
+        company_backtest_results_df.groupby(DATE_COLUMN, as_index=False)
         .agg(
-            gross_return=("gross_return", "sum"),
-            transaction_cost=("transaction_cost", "sum"),
-            net_return=("net_return", "sum"),
-            active_trades=("active_trade", "sum"),
-            correct_trades=("correct_trade", "sum"),
+            gross_return=(GROSS_RETURN_COLUMN, "sum"),
+            transaction_cost=(TRANSACTION_COST_COLUMN, "sum"),
+            net_return=(NET_RETURN_COLUMN, "sum"),
+            active_trades=(ACTIVE_TRADE_COLUMN, "sum"),
+            correct_trades=(CORRECT_TRADE_COLUMN, "sum"),
         )
-        .sort_values("date")
+        .sort_values(DATE_COLUMN)
     )
     # Daily company returns are summed and divided by ten, giving each company an effective 10% portfolio weight.
     # Where no position is taken for a company, its contribution is zero and the unused allocation is treated as remaining in cash.
-    daily[["gross_return", "transaction_cost", "net_return"]] /= company_count
-    daily["cumulative_return"] = (1 + daily["net_return"]).cumprod() - 1
-    return daily
+    daily_portfolio_results_df[
+        [GROSS_RETURN_COLUMN, TRANSACTION_COST_COLUMN, NET_RETURN_COLUMN]
+    ] /= company_count
+
+    # Compound each daily net return to produce the portfolio's cumulative return path.
+    daily_portfolio_results_df[CUMULATIVE_RETURN_COLUMN] = (
+        1 + daily_portfolio_results_df[NET_RETURN_COLUMN]
+    ).cumprod() - 1
+
+    return daily_portfolio_results_df
 
 
-def evaluate_backtests(panels):
+def evaluate_model_backtests(daily_signal_panels_by_model):
     """Evaluate both trading rules for every sentiment model."""
 
-    result_rows = []
-    daily_curves = {}
-    seed = RANDOM_SEED
+    backtest_result_list: list[BacktestResult] = []
+    daily_backtest_results_by_model_and_strategy = {}
+    bootstrap_seed = RANDOM_SEED
 
-    for name, model_id, knowledge_level in MODEL_VARIANTS:
+    # Run both trading strategies independently for each of the four model variants.
+    for model_name, model_id, knowledge_level in MODEL_VARIANTS:
         for strategy in STRATEGIES:
-            daily = run_strategy(panels[name], strategy)
-            active_trades = int(daily["active_trades"].sum())
-            correct_trades = int(daily["correct_trades"].sum())
-            intervals = calculate_sharpe_and_hit_ratio(daily, seed)
-            seed += 1
-
-            result_rows.append(
-                {
-                    MODEL_COLUMN: name,
-                    MODEL_ID_COLUMN: model_id,
-                    KNOWLEDGE_LEVEL_COLUMN: knowledge_level,
-                    "strategy": strategy,
-                    "Sharpe_ratio": calculate_sharpe(daily["net_return"]),
-                    **intervals,
-                    "hit_rate": (
-                        correct_trades / active_trades if active_trades else 0.0
-                    ),
-                    "cumulative_return": daily["cumulative_return"].iloc[-1],
-                    "active_trades": active_trades,
-                    "trading_days": len(daily),
-                    "transaction_cost_bps": TRANSACTION_COST_BPS,
-                }
+            print(
+                "---------------------------------Backtest being evaluated:---------------------------------"
             )
-            daily_curves[(name, strategy)] = daily
+            print(f"Evaluating {model_name} with the {strategy} strategy")
 
-    return pd.DataFrame(result_rows), daily_curves
+            daily_backtest_results_df = run_backtest_strategy(
+                daily_signal_panels_by_model[model_name],
+                strategy,
+            )
+            active_trade_count = int(
+                daily_backtest_results_df[ACTIVE_TRADES_COLUMN].sum()
+            )
+            correct_trade_count = int(
+                daily_backtest_results_df[CORRECT_TRADES_COLUMN].sum()
+            )
+            backtest_confidence_intervals = calculate_backtest_confidence_intervals(
+                daily_backtest_results_df,
+                bootstrap_seed,
+            )
+            bootstrap_seed += 1
+
+            # Hit rate is the proportion of active company-days for which the position direction matched the following return direction.
+            hit_rate = (
+                correct_trade_count / active_trade_count if active_trade_count else 0.0
+            )
+            backtest_result = BacktestResult(
+                model=model_name,
+                model_id=model_id,
+                knowledge_level=knowledge_level,
+                strategy=strategy,
+                Sharpe_ratio=calculate_annualised_sharpe_ratio(
+                    daily_backtest_results_df[NET_RETURN_COLUMN]
+                ),
+                Sharpe_ci_lower=backtest_confidence_intervals[SHARPE_CI_LOWER_COLUMN],
+                Sharpe_ci_upper=backtest_confidence_intervals[SHARPE_CI_UPPER_COLUMN],
+                hit_rate_ci_lower=backtest_confidence_intervals[
+                    HIT_RATE_CI_LOWER_COLUMN
+                ],
+                hit_rate_ci_upper=backtest_confidence_intervals[
+                    HIT_RATE_CI_UPPER_COLUMN
+                ],
+                hit_rate=hit_rate,
+                cumulative_return=daily_backtest_results_df[
+                    CUMULATIVE_RETURN_COLUMN
+                ].iloc[-1],
+                active_trades=active_trade_count,
+                trading_days=len(daily_backtest_results_df),
+                transaction_cost_bps=TRANSACTION_COST_BPS,
+            )
+            backtest_result_list.append(backtest_result)
+            daily_backtest_results_by_model_and_strategy[(model_name, strategy)] = (
+                daily_backtest_results_df
+            )
+
+    return (
+        pd.DataFrame(backtest_result_list),
+        daily_backtest_results_by_model_and_strategy,
+    )
 
 
-def create_report_table(results_df):
-    """Create the concise backtest table used in the dissertation."""
+def create_backtest_table(backtest_results_df) -> pd.DataFrame:
+    """Create a backtest table figure."""
 
-    report_table = results_df[
+    backtest_report_df = backtest_results_df[
         [
             MODEL_COLUMN,
-            "strategy",
-            "Sharpe_ratio",
-            "hit_rate",
-            "cumulative_return",
-            "active_trades",
+            STRATEGY_COLUMN,
+            SHARPE_RATIO_COLUMN,
+            HIT_RATE_COLUMN,
+            CUMULATIVE_RETURN_COLUMN,
+            ACTIVE_TRADES_COLUMN,
         ]
     ].copy()
 
-    report_table["strategy"] = report_table["strategy"].str.capitalize()
-    report_table["Sharpe_ratio"] = report_table["Sharpe_ratio"].round(3)
-    report_table["hit_rate"] = (report_table["hit_rate"] * 100).round(2)
-    report_table["cumulative_return"] = (
-        report_table["cumulative_return"] * 100
+    # Format the numeric results for the concise dissertation summary table.
+    backtest_report_df[STRATEGY_COLUMN] = backtest_report_df[
+        STRATEGY_COLUMN
+    ].str.capitalize()
+    backtest_report_df[SHARPE_RATIO_COLUMN] = backtest_report_df[
+        SHARPE_RATIO_COLUMN
+    ].round(3)
+    backtest_report_df[HIT_RATE_COLUMN] = (
+        backtest_report_df[HIT_RATE_COLUMN] * 100
+    ).round(2)
+    backtest_report_df[CUMULATIVE_RETURN_COLUMN] = (
+        backtest_report_df[CUMULATIVE_RETURN_COLUMN] * 100
     ).round(2)
 
-    return report_table.rename(
+    return backtest_report_df.rename(
         columns={
-            MODEL_COLUMN: "Condition",
-            "strategy": "Strategy",
-            "Sharpe_ratio": "Sharpe ratio",
-            "hit_rate": "Hit rate (%)",
-            "cumulative_return": "Cumulative net return (%)",
-            "active_trades": "Active company-days",
+            MODEL_COLUMN: CONDITION_REPORT_COLUMN,
+            STRATEGY_COLUMN: STRATEGY_REPORT_COLUMN,
+            SHARPE_RATIO_COLUMN: SHARPE_RATIO_REPORT_COLUMN,
+            HIT_RATE_COLUMN: HIT_RATE_REPORT_COLUMN,
+            CUMULATIVE_RETURN_COLUMN: CUMULATIVE_RETURN_REPORT_COLUMN,
+            ACTIVE_TRADES_COLUMN: ACTIVE_TRADES_REPORT_COLUMN,
         }
     )
 
 
-def create_backtest_summary_figure(report_table, output_path):
+def create_backtest_summary_figure(backtest_report_df, output_path):
     """Create the backtest results as a figure."""
 
-    display_table = report_table.copy()
-    display_table["Sharpe ratio"] = display_table["Sharpe ratio"].map(
-        lambda value: f"{value:.3f}"
+    # Convert the report values to their final display strings without modifying the saved numeric table.
+    formatted_backtest_report_df = backtest_report_df.copy()
+    formatted_backtest_report_df[SHARPE_RATIO_REPORT_COLUMN] = (
+        formatted_backtest_report_df[SHARPE_RATIO_REPORT_COLUMN].map(
+            lambda value: f"{value:.3f}"
+        )
     )
-    display_table["Hit rate (%)"] = display_table["Hit rate (%)"].map(
-        lambda value: f"{value:.2f}%"
-    )
-    display_table["Cumulative net return (%)"] = display_table[
-        "Cumulative net return (%)"
+    formatted_backtest_report_df[HIT_RATE_REPORT_COLUMN] = formatted_backtest_report_df[
+        HIT_RATE_REPORT_COLUMN
     ].map(lambda value: f"{value:.2f}%")
-    display_table["Active company-days"] = display_table[
-        "Active company-days"
-    ].map(lambda value: f"{value:,.0f}")
+    formatted_backtest_report_df[CUMULATIVE_RETURN_REPORT_COLUMN] = (
+        formatted_backtest_report_df[CUMULATIVE_RETURN_REPORT_COLUMN].map(
+            lambda value: f"{value:.2f}%"
+        )
+    )
+    formatted_backtest_report_df[ACTIVE_TRADES_REPORT_COLUMN] = (
+        formatted_backtest_report_df[ACTIVE_TRADES_REPORT_COLUMN].map(
+            lambda value: f"{value:,.0f}"
+        )
+    )
 
-    plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 9})
+    plt.rcParams.update(get_figure_font_settings(9))
     figure, axis = plt.subplots(figsize=(12, 4.2))
     axis.axis("off")
-    table = axis.table(
-        cellText=display_table.to_numpy(),
-        colLabels=display_table.columns,
+    figure_table = axis.table(
+        cellText=formatted_backtest_report_df.to_numpy(),
+        colLabels=formatted_backtest_report_df.columns,
         cellLoc="center",
         colLoc="center",
         colWidths=[0.19, 0.13, 0.13, 0.13, 0.23, 0.18],
         loc="center",
     )
-    table.auto_set_font_size(False)
-    table.set_fontsize(8.5)
-    table.scale(1, 1.55)
+    figure_table.auto_set_font_size(False)
+    figure_table.set_fontsize(8.5)
+    figure_table.scale(1, 1.55)
 
-    for (row, column), cell in table.get_celld().items():
+    for (row_index, column_index), cell in figure_table.get_celld().items():
         cell.set_edgecolor("#D6DEDA")
-        if row == 0:
+        if row_index == 0:
             cell.set_facecolor(FIGURE_NAVY)
             cell.set_text_props(color="white", weight="bold")
-        elif row % 2 == 0:
+        elif row_index % 2 == 0:
             cell.set_facecolor("#F1F5F3")
-        if row > 0 and column in (0, 1):
+        if row_index > 0 and column_index in (0, 1):
             cell.set_text_props(ha="left")
 
     axis.set_title("Backtest performance summary", fontsize=13, pad=12)
@@ -357,10 +567,13 @@ def create_backtest_summary_figure(report_table, output_path):
     plt.close(figure)
 
 
-def create_cumulative_return_figure(daily_curves, output_path):
+def create_cumulative_return_figure(
+    daily_backtest_results_by_model_and_strategy,
+    output_path,
+) -> None:
     """Create the cumulative net-return curves for both trading strategies."""
 
-    plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 10})
+    plt.rcParams.update(get_figure_font_settings(10))
     colours = [
         FIGURE_NAVY,
         FIGURE_DEEP_BLUE,
@@ -371,16 +584,18 @@ def create_cumulative_return_figure(daily_curves, output_path):
     figure, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     for axis, strategy in zip(axes, STRATEGIES):
-        for colour, line_style, (name, _, _) in zip(
+        for colour, line_style, (model_name, _, _) in zip(
             colours,
             line_styles,
             MODEL_VARIANTS,
         ):
-            daily = daily_curves[(name, strategy)]
+            daily_backtest_results_df = daily_backtest_results_by_model_and_strategy[
+                (model_name, strategy)
+            ]
             axis.plot(
-                pd.to_datetime(daily["date"]),
-                daily["cumulative_return"] * 100,
-                label=name,
+                pd.to_datetime(daily_backtest_results_df[DATE_COLUMN]),
+                daily_backtest_results_df[CUMULATIVE_RETURN_COLUMN] * 100,
+                label=model_name,
                 color=colour,
                 linestyle=line_style,
                 linewidth=1.7,
@@ -398,7 +613,7 @@ def create_cumulative_return_figure(daily_curves, output_path):
     plt.close(figure)
 
 
-def create_backtest_metrics_figure(results_df, output_path):
+def create_backtest_metrics_figure(backtest_results_df, output_path):
     """Create the Sharpe-ratio and hit-rate comparisons figure with confidence intervals."""
 
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.8))
@@ -407,25 +622,40 @@ def create_backtest_metrics_figure(results_df, output_path):
     width = 0.36
 
     for offset, strategy in [(-width / 2, LONG_ONLY), (width / 2, LONG_SHORT)]:
-        subset = results_df.loc[results_df["strategy"] == strategy].set_index(MODEL_COLUMN)
-        subset = subset.loc[[item[0] for item in MODEL_VARIANTS]]
+        strategy_results_df = backtest_results_df.loc[
+            backtest_results_df[STRATEGY_COLUMN] == strategy
+        ].set_index(MODEL_COLUMN)
+        strategy_results_df = strategy_results_df.loc[
+            [model_variant[0] for model_variant in MODEL_VARIANTS]
+        ]
 
+        # Plot each metric with asymmetric error bars extending to its bootstrap confidence limits.
         for axis, metric, lower_name, upper_name in [
-            (axes[0], "Sharpe_ratio", "Sharpe_ci_lower", "Sharpe_ci_upper"),
-            (axes[1], "hit_rate", "hit_rate_ci_lower", "hit_rate_ci_upper"),
+            (
+                axes[0],
+                SHARPE_RATIO_COLUMN,
+                SHARPE_CI_LOWER_COLUMN,
+                SHARPE_CI_UPPER_COLUMN,
+            ),
+            (
+                axes[1],
+                HIT_RATE_COLUMN,
+                HIT_RATE_CI_LOWER_COLUMN,
+                HIT_RATE_CI_UPPER_COLUMN,
+            ),
         ]:
-            values = subset[metric].to_numpy()
-            error = np.vstack(
+            metric_values = strategy_results_df[metric].to_numpy()
+            confidence_interval_error = np.vstack(
                 [
-                    values - subset[lower_name].to_numpy(),
-                    subset[upper_name].to_numpy() - values,
+                    metric_values - strategy_results_df[lower_name].to_numpy(),
+                    strategy_results_df[upper_name].to_numpy() - metric_values,
                 ]
             )
             axis.bar(
                 positions + offset,
-                values,
+                metric_values,
                 width,
-                yerr=error,
+                yerr=confidence_interval_error,
                 capsize=3,
                 label=strategy.title(),
                 color=colours[strategy],
@@ -442,7 +672,7 @@ def create_backtest_metrics_figure(results_df, output_path):
     for axis in axes:
         axis.set_xticks(positions)
         axis.set_xticklabels(
-            [item[0] for item in MODEL_VARIANTS],
+            [model_variant[0] for model_variant in MODEL_VARIANTS],
             rotation=18,
             ha="right",
         )
@@ -463,45 +693,44 @@ def main():
     tables_directory.mkdir(parents=True, exist_ok=True)
     figures_directory.mkdir(parents=True, exist_ok=True)
 
-    headlines_df = pd.read_csv(
+    headlines_aligned_prices_df = pd.read_csv(
         PROCESSED_DATA_DIR / HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME
     )
-    prices_df = pd.read_csv(RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME)
-    predictions_df = load_predictions()
+    yfinance_prices_df = pd.read_csv(RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME)
+    model_predictions_df = load_FinBERT_and_DK_CoT_predictions()
 
-    panels, daily_signals_df = create_daily_signal_panels(
-        headlines_df,
-        prices_df,
-        predictions_df,
+    daily_signal_panels_by_model, daily_signals_df = (
+        create_daily_sentiment_signal_panels(
+            headlines_aligned_prices_df,
+            yfinance_prices_df,
+            model_predictions_df,
+        )
     )
-    results_df, daily_curves = evaluate_backtests(panels)
-    report_table = create_report_table(results_df)
+    (
+        backtest_results_df,
+        daily_backtest_results_by_model_and_strategy,
+    ) = evaluate_model_backtests(daily_signal_panels_by_model)
+    backtest_report_df = create_backtest_table(backtest_results_df)
 
-    signals_path = PROCESSED_DATA_DIR / DAILY_SIGNALS_CSV_FILE_NAME
-    results_path = PROCESSED_DATA_DIR / BACKTEST_RESULTS_CSV_FILE_NAME
-    report_table_path = tables_directory / BACKTEST_SUMMARY_CSV_FILE_NAME
-    daily_signals_df.to_csv(signals_path, index=False)
-    results_df.to_csv(results_path, index=False)
-    report_table.to_csv(report_table_path, index=False)
+    daily_signals_file_path = PROCESSED_DATA_DIR / DAILY_SIGNALS_CSV_FILE_NAME
+    backtest_results_file_path = PROCESSED_DATA_DIR / BACKTEST_RESULTS_CSV_FILE_NAME
+    backtest_summary_file_path = tables_directory / BACKTEST_SUMMARY_CSV_FILE_NAME
+    daily_signals_df.to_csv(daily_signals_file_path, index=False)
+    backtest_results_df.to_csv(backtest_results_file_path, index=False)
+    backtest_report_df.to_csv(backtest_summary_file_path, index=False)
 
     create_cumulative_return_figure(
-        daily_curves,
+        daily_backtest_results_by_model_and_strategy,
         figures_directory / BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME,
     )
     create_backtest_metrics_figure(
-        results_df,
+        backtest_results_df,
         figures_directory / BACKTEST_METRICS_PNG_FILE_NAME,
     )
     create_backtest_summary_figure(
-        report_table,
+        backtest_report_df,
         figures_directory / BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME,
     )
-
-    print(results_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
-    print(f"\nSaved daily signals to {signals_path}")
-    print(f"Saved backtest results to {results_path}")
-    print(f"Saved report table to {report_table_path}")
-    print(f"Saved figures to {figures_directory}")
 
 
 if __name__ == "__main__":

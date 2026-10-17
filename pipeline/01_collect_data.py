@@ -21,8 +21,8 @@ DRY_RUN = False
 
 # - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/string_functions#regexp_contains
 # - The `gdeltv2.gsg_docembed` is the table provided and maintained by GDELT and hosted on Google BigQuery and holds a large amount of records about global news articles:
-    # - https://blog.gdeltproject.org/announcing-the-global-similarity-graph-document-embeddings-using-the-universal-sentence-encoder/
-    # - https://console.cloud.google.com/bigquery?project=gdelt-bq&ws=&p=gdelt-bq&d=gdeltv2&t=gsg_docembed&page=table&pli=1
+# - https://blog.gdeltproject.org/announcing-the-global-similarity-graph-document-embeddings-using-the-universal-sentence-encoder/
+# - https://console.cloud.google.com/bigquery?project=gdelt-bq&ws=&p=gdelt-bq&d=gdeltv2&t=gsg_docembed&page=table&pli=1
 # The SELECT clause retrieves article metadata and titles.
 # REGEXP_CONTAINS keeps titles that mention one of the configured company aliases.
 GDELT_QUERY = """
@@ -85,7 +85,7 @@ def collect_prices(companies) -> None:
         return
 
     frames = []
-    
+
     # Extend the range (`timedelta(days=3)`) to include 2 January 2026, the first trading day after 31 December 2025.
     # Since yfinance excludes the specified end date, 3 January is passed as the boundary.
     final_date = date.fromisoformat(END_DATE) + timedelta(days=3)
@@ -120,10 +120,10 @@ def collect_prices(companies) -> None:
         )
 
         company_prices["ticker"] = company.ticker
-  
-        company_prices["date"] = pd.to_datetime(
-            company_prices["date"]
-        ).dt.strftime(PD_DATE_FORMAT)
+
+        company_prices["date"] = pd.to_datetime(company_prices["date"]).dt.strftime(
+            PD_DATE_FORMAT
+        )
 
         frames.append(
             company_prices[
@@ -166,9 +166,7 @@ def collect_headlines(companies) -> None:
             bigquery.ScalarQueryParameter(
                 "end_date", "DATE", date.fromisoformat(END_DATE)
             ),
-            bigquery.ScalarQueryParameter(
-                "alias_pattern", "STRING", alias_pattern
-            ),
+            bigquery.ScalarQueryParameter("alias_pattern", "STRING", alias_pattern),
         ],
     )
 
@@ -229,4 +227,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

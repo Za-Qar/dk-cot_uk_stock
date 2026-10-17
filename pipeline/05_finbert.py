@@ -25,7 +25,7 @@ from uk_dkcot.config import (
 BATCH_SIZE = 32
 
 
-def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame :
+def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame:
     """Run FinBERT in batches and return one prediction per headline."""
 
     predictions = []
@@ -36,7 +36,7 @@ def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame :
         batch = headlines.iloc[start_index:end_index]
 
         # The `truncation=True` is used to cut anything exceeding the 512 tokens which is the maximum number of input finBERT can accept per input
-        # https://huggingface.co/ProsusAI/finbert/blob/main/config.json 
+        # https://huggingface.co/ProsusAI/finbert/blob/main/config.json
         # https://huggingface.co/docs/transformers/main_classes/tokenizer
         # # Headlines contain different numbers of tokens, but a batch must form one fixed-size tensor. Padding adds special padding tokens to shorter headlines. Therefore, every headline matches the longest sequence in the current batch. Hugging Face states: "Batched inputs are often different lengths, so they can’t be converted to fixed-size tensors.". That is why padding is used.
         # Source: https://huggingface.co/docs/transformers/main/pad_truncation
@@ -52,7 +52,9 @@ def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame :
             # Pass the tokenised headlines into FinBERT and obtain its raw class scores.
             # logits are finBERT's raw scores: https://huggingface.co/docs/transformers/model_doc/bert
             logits = model(**model_inputs).logits
-            print("---------------------------------FinBERT's raw scores (logits):---------------------------------")
+            print(
+                "---------------------------------FinBERT's raw scores (logits):---------------------------------"
+            )
             print(logits)
             # Use `softmax` to convert FinBERT's logits to a number between 0 and 1 and also "sum to 1".
             # Source: https://docs.pytorch.org/docs/2.14/generated/torch.nn.Softmax.html
@@ -76,7 +78,7 @@ def predict_headlines(headlines, tokeniser, model, device) -> pd.DataFrame :
                 model.config.id2label[index].lower(): round(float(score), 6)
                 for index, score in enumerate(scores)
             }
-            
+
             # Store the prediction the relevant data information
             predictions.append(
                 {
@@ -121,13 +123,17 @@ def main():
     )
 
     # Display the first five predictions in the terminal
-    print("---------------------------------Prediction sample:---------------------------------")
+    print(
+        "---------------------------------Prediction sample:---------------------------------"
+    )
     print(finBERT_predictions_df.head().to_string(index=False))
 
     # Ensure both dataframes are the same size
     assert len(finBERT_predictions_df) == len(headlined_aligned_prices_df)
     # Ensure that the below finBERT_predictions_df is valid
-    assert set(finBERT_predictions_df[LABEL_PRED_COLUMN]).issubset(VALID_SENTIMENT_LABELS)
+    assert set(finBERT_predictions_df[LABEL_PRED_COLUMN]).issubset(
+        VALID_SENTIMENT_LABELS
+    )
 
     finBERT_predictions_df.to_csv(output_path, index=False)
 

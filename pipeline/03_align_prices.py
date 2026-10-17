@@ -125,7 +125,9 @@ def main():
     aligned_df[HEADLINE_DATE_LONDON_COLUMN] = aligned_df[
         HEADLINE_DATE_LONDON_COLUMN
     ].dt.strftime(PD_DATE_FORMAT)
-    aligned_df[TRADE_DATE_COLUMN] = aligned_df[TRADE_DATE_COLUMN].dt.strftime(PD_DATE_FORMAT)
+    aligned_df[TRADE_DATE_COLUMN] = aligned_df[TRADE_DATE_COLUMN].dt.strftime(
+        PD_DATE_FORMAT
+    )
 
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     aligned_df.to_csv(output_path, index=False)

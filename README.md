@@ -28,10 +28,18 @@ gcloud auth application-default set-quota-project uk-dkcot
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
 Generated datasets are stored in `data/raw` and `data/processed` and are not committed to Git.
+
+## Formatting
+
+Format all Python files from the project root:
+
+```powershell
+python -m black .
+```
 
 ## Pipeline
 
