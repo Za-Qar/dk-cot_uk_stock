@@ -253,12 +253,12 @@ def run_mcnemar_tests_per_model_variant(gold_and_predicted_labels_by_model) -> p
         2,
     ):
         # The below results in the following (a total of six comparisons):
-        # FinBERT -WITH- DK-CoT none
-        # FinBERT -WITH- DK-CoT sector
-        # FinBERT -WITH- DK-CoT firm
-        # DK-CoT none -WITH- DK-CoT sector
-        # DK-CoT none -WITH- DK-CoT firm
-        # DK-CoT sector -WITH- DK-CoT firm
+        # FinBERT with DK-CoT (none)
+        # FinBERT with DK-CoT (sector)
+        # FinBERT with DK-CoT (firm)
+        # DK-CoT (none) with DK-CoT (sector)
+        # DK-CoT (none) with DK-CoT (firm)
+        # DK-CoT (sector) with DK-CoT (firm)
         print("---------------------------------Models being compared together:---------------------------------")
         print(f"Comparing {first_model_name} with {second_model_name}")
 
@@ -360,7 +360,7 @@ def create_confusion_matrices_for_each_model_variant(paired_predictions, output_
     }
     maximum_count = max(matrix.max() for matrix in matrices.values())
 
-    for axis, name in zip(axes.flat, paired_predictions.items()):
+    for axis, name in zip(axes.flat, paired_predictions):
         matrix = matrices[name]
         image = axis.imshow(matrix, cmap=colour_gradient, vmin=0, vmax=maximum_count)
         for row in range(len(SENTIMENT_LABELS)):
