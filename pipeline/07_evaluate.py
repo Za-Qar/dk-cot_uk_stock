@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from scipy import stats
 from typing import TypedDict
@@ -17,6 +18,10 @@ from uk_dkcot.config import (
     FINBERT_DISPLAY_NAME,
     FINBERT_MODEL_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
+    FIGURE_DEEP_BLUE,
+    FIGURE_NAVY,
+    FIGURE_PRIMARY_TEAL,
+    FIGURE_SECONDARY_TEAL,
     GOLD_LABELS_CSV_FILE_NAME,
     HEADLINE_ID_COLUMN,
     KNOWLEDGE_LEVEL_COLUMN,
@@ -56,22 +61,33 @@ class McNemarTestResult(TypedDict):
     p_value: float
     significant_at_0_05: bool
 
-def calculate_accuracy_and_f1_score(gold_labels, predictions):
+class ClassificationMetrics(TypedDict):
+    accuracy: float # Must match the variable ACCURACY_COLUMN from the config.py
+    macro_f1: float # Must match the variable MACRO_F1_COLUMN from the config.py
+
+class BootstrapConfidenceIntervals(TypedDict):
+    accuracy_ci_lower: float
+    accuracy_ci_upper: float
+    macro_f1_ci_lower: float
+    macro_f1_ci_upper: float
+
+
+def calculate_accuracy_and_f1_score(gold_labels, predictions) -> ClassificationMetrics:
     """Return accuracy and Macro-F1 for one prediction set."""
 
-    return {
-        ACCURACY_COLUMN: accuracy_score(gold_labels, predictions),
-        MACRO_F1_COLUMN: f1_score(
+    return ClassificationMetrics(
+        accuracy=accuracy_score(gold_labels, predictions),
+        macro_f1=f1_score(
             gold_labels,
             predictions,
             labels=SENTIMENT_LABELS,
             average="macro",
             zero_division=0,
         ),
-    }
+    )
 
 
-def calculate_bootstrap_confidence_intervals(gold_labels, model_predictions, seed):
+def calculate_bootstrap_confidence_intervals(gold_labels, model_predictions, seed) -> BootstrapConfidenceIntervals:
     """Estimate 95% confidence intervals by resampling headlines"""
 
     # Convert labels into NumPy arrays
@@ -106,12 +122,12 @@ def calculate_bootstrap_confidence_intervals(gold_labels, model_predictions, see
     # Bootstrap method: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.bootstrap.html
     # This is the percentile bootstrap method
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.bootstrap.html
-    return {
-        "accuracy_ci_lower": np.quantile(bootstrap_accuracy_values, 0.025),
-        "accuracy_ci_upper": np.quantile(bootstrap_accuracy_values, 0.975),
-        "macro_f1_ci_lower": np.quantile(bootstrap_macro_f1_values, 0.025),
-        "macro_f1_ci_upper": np.quantile(bootstrap_macro_f1_values, 0.975),
-    }
+    return BootstrapConfidenceIntervals(
+        accuracy_ci_lower=np.quantile(bootstrap_accuracy_values, 0.025),
+        accuracy_ci_upper=np.quantile(bootstrap_accuracy_values, 0.975),
+        macro_f1_ci_lower=np.quantile(bootstrap_macro_f1_values, 0.025),
+        macro_f1_ci_upper=np.quantile(bootstrap_macro_f1_values, 0.975),
+    )
 
 
 def get_mcnemar_test_values(first_correct, second_correct) -> tuple[int, int, float]:
@@ -288,7 +304,10 @@ def create_accuracy_and_macro_f1_figure(results_df, output_path):
     plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 10})
     positions = np.arange(len(results_df))
     width = 0.36
-    colours = {ACCURACY_COLUMN: "#0B6E75", MACRO_F1_COLUMN: "#D17A22"}
+    colours = {
+        ACCURACY_COLUMN: FIGURE_PRIMARY_TEAL,
+        MACRO_F1_COLUMN: FIGURE_DEEP_BLUE,
+    }
 
     figure, axis = plt.subplots(figsize=(9, 5.3))
 
@@ -327,6 +346,10 @@ def create_confusion_matrices_for_each_model_variant(paired_predictions, output_
     """Save one confusion matrix for each evaluated model variant."""
 
     figure, axes = plt.subplots(2, 2, figsize=(9, 8.2))
+    colour_gradient = LinearSegmentedColormap.from_list(
+        "defined_colours",
+        ["white", FIGURE_SECONDARY_TEAL, FIGURE_NAVY],
+    )
     matrices = {
         name: confusion_matrix(
             data[LABEL_GOLD_COLUMN],
@@ -337,9 +360,9 @@ def create_confusion_matrices_for_each_model_variant(paired_predictions, output_
     }
     maximum_count = max(matrix.max() for matrix in matrices.values())
 
-    for axis, (name, data) in zip(axes.flat, paired_predictions.items()):
+    for axis, name in zip(axes.flat, paired_predictions.items()):
         matrix = matrices[name]
-        image = axis.imshow(matrix, cmap="YlGnBu", vmin=0, vmax=maximum_count)
+        image = axis.imshow(matrix, cmap=colour_gradient, vmin=0, vmax=maximum_count)
         for row in range(len(SENTIMENT_LABELS)):
             for column in range(len(SENTIMENT_LABELS)):
                 colour = "white" if matrix[row, column] > matrix.max() / 2 else "black"
@@ -379,12 +402,12 @@ def main():
 
     gold_df, predictions_df = load_and_get_gold_labels_and_model_predictions_data()
     results_df, paired_predictions = evaluate_models(gold_df, predictions_df)
-    significance_df = run_mcnemar_tests_per_model_variant(paired_predictions)
+    mc_nemar_tests_df = run_mcnemar_tests_per_model_variant(paired_predictions)
 
-    results_path = tables_directory / CLASSIFICATION_RESULTS_CSV_FILE_NAME
+    classification_results_path = tables_directory / CLASSIFICATION_RESULTS_CSV_FILE_NAME
     significance_path = tables_directory / PAIRED_SIGNIFICANCE_TESTS_CSV_FILE_NAME
-    results_df.to_csv(results_path, index=False)
-    significance_df.to_csv(significance_path, index=False)
+    results_df.to_csv(classification_results_path, index=False)
+    mc_nemar_tests_df.to_csv(significance_path, index=False)
 
     create_accuracy_and_macro_f1_figure(
         results_df,
@@ -394,12 +417,6 @@ def main():
         paired_predictions,
         figures_directory / CLASSIFICATION_CONFUSION_MATRICES_PNG_FILE_NAME,
     )
-
-    print(results_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
-    print("\nPaired exact McNemar tests:")
-    print(significance_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
-    print(f"\nSaved tables to {tables_directory}")
-    print(f"Saved figures to {figures_directory}")
 
 
 if __name__ == "__main__":

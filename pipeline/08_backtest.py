@@ -15,6 +15,10 @@ from uk_dkcot.config import (
     FINBERT_DISPLAY_NAME,
     FINBERT_MODEL_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
+    FIGURE_DARK_TEAL,
+    FIGURE_DEEP_BLUE,
+    FIGURE_NAVY,
+    FIGURE_PRIMARY_TEAL,
     HEADLINE_ID_COLUMN,
     HEADLINES_ALIGNED_PRICES_CSV_FILE_NAME,
     KNOWLEDGE_LEVEL_COLUMN,
@@ -333,7 +337,7 @@ def save_backtest_summary_figure(report_table, output_path):
     for (row, column), cell in table.get_celld().items():
         cell.set_edgecolor("#D6DEDA")
         if row == 0:
-            cell.set_facecolor("#0B6E75")
+            cell.set_facecolor(FIGURE_NAVY)
             cell.set_text_props(color="white", weight="bold")
         elif row % 2 == 0:
             cell.set_facecolor("#F1F5F3")
@@ -350,17 +354,28 @@ def save_cumulative_return_figure(daily_curves, output_path):
     """Save cumulative net-return curves for both trading strategies."""
 
     plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 10})
-    colours = ["#0B6E75", "#D17A22", "#4C78A8", "#8C564B"]
+    colours = [
+        FIGURE_NAVY,
+        FIGURE_DEEP_BLUE,
+        FIGURE_DARK_TEAL,
+        FIGURE_PRIMARY_TEAL,
+    ]
+    line_styles = ["-", "--", "-.", ":"]
     figure, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     for axis, strategy in zip(axes, STRATEGIES):
-        for colour, (name, _, _) in zip(colours, MODEL_VARIANTS):
+        for colour, line_style, (name, _, _) in zip(
+            colours,
+            line_styles,
+            MODEL_VARIANTS,
+        ):
             daily = daily_curves[(name, strategy)]
             axis.plot(
                 pd.to_datetime(daily["date"]),
                 daily["cumulative_return"] * 100,
                 label=name,
                 color=colour,
+                linestyle=line_style,
                 linewidth=1.7,
             )
         axis.axhline(0, color="#333333", linewidth=0.8)
@@ -380,7 +395,7 @@ def save_backtest_metrics_figure(results_df, output_path):
     """Save Sharpe-ratio and hit-rate comparisons with confidence intervals."""
 
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.8))
-    colours = {LONG_ONLY: "#0B6E75", LONG_SHORT: "#D17A22"}
+    colours = {LONG_ONLY: FIGURE_PRIMARY_TEAL, LONG_SHORT: FIGURE_DEEP_BLUE}
     positions = np.arange(len(MODEL_VARIANTS))
     width = 0.36
 

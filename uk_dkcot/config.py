@@ -37,6 +37,13 @@ BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME = "backtest_cumulative_returns.png"
 BACKTEST_METRICS_PNG_FILE_NAME = "backtest_metrics.png"
 BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME = "backtest_summary_table.png"
 
+# Shared figure colours. This is to maintain consistency with the colours used for the graphics in the reports and poster and the graphics generated in the codebase
+FIGURE_PRIMARY_TEAL = "#006363"
+FIGURE_SECONDARY_TEAL = "#0A6A70"
+FIGURE_DARK_TEAL = "#09424C"
+FIGURE_DEEP_BLUE = "#122E52"
+FIGURE_NAVY = "#0D1427"
+
 # Shared sentiment labels used by manual labelling and model evaluation
 POSITIVE_LABEL = "positive"
 NEUTRAL_LABEL = "neutral"
