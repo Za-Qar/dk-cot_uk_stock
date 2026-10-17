@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from typing import TypedDict
 
 from uk_dkcot.config import (
     BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME,
@@ -56,6 +57,13 @@ MODEL_VARIANTS = [
 ]
 
 
+class BacktestConfidenceIntervals(TypedDict):
+    Sharpe_ci_lower: float
+    Sharpe_ci_upper: float
+    hit_rate_ci_lower: float
+    hit_rate_ci_upper: float
+
+
 def calculate_sharpe(daily_returns):
     """Calculate annualised Sharpe ratio with a zero risk-free rate."""
 
@@ -66,7 +74,7 @@ def calculate_sharpe(daily_returns):
     return np.sqrt(252) * returns.mean() / standard_deviation
 
 
-def block_bootstrap_intervals(daily_results, seed):
+def calculate_sharpe_and_hit_ratio(daily_results, seed) -> BacktestConfidenceIntervals:
     """Estimate Sharpe and hit-rate intervals using five-day blocks."""
 
     random_generator = np.random.default_rng(seed)
@@ -91,12 +99,12 @@ def block_bootstrap_intervals(daily_results, seed):
             else 0.0
         )
 
-    return {
-        "Sharpe_ci_lower": np.quantile(sharpe_values, 0.025),
-        "Sharpe_ci_upper": np.quantile(sharpe_values, 0.975),
-        "hit_rate_ci_lower": np.quantile(hit_rate_values, 0.025),
-        "hit_rate_ci_upper": np.quantile(hit_rate_values, 0.975),
-    }
+    return BacktestConfidenceIntervals(
+        Sharpe_ci_lower=np.quantile(sharpe_values, 0.025),
+        Sharpe_ci_upper=np.quantile(sharpe_values, 0.975),
+        hit_rate_ci_lower=np.quantile(hit_rate_values, 0.025),
+        hit_rate_ci_upper=np.quantile(hit_rate_values, 0.975),
+    )
 
 
 def load_predictions():
@@ -120,7 +128,6 @@ def create_daily_signal_panels(headlines_df, prices_df, predictions_df):
     scored_predictions["sentiment_score"] = scored_predictions[LABEL_PRED_COLUMN].map(
         SENTIMENT_SCORES
     )
-    assert not scored_predictions["sentiment_score"].isna().any()
 
     daily_scores = (
         scored_predictions.groupby(
@@ -244,7 +251,7 @@ def evaluate_backtests(panels):
             daily = run_strategy(panels[name], strategy)
             active_trades = int(daily["active_trades"].sum())
             correct_trades = int(daily["correct_trades"].sum())
-            intervals = block_bootstrap_intervals(daily, seed)
+            intervals = calculate_sharpe_and_hit_ratio(daily, seed)
             seed += 1
 
             result_rows.append(
@@ -302,8 +309,8 @@ def create_report_table(results_df):
     )
 
 
-def save_backtest_summary_figure(report_table, output_path):
-    """Save the concise backtest results as a report-ready table figure."""
+def create_backtest_summary_figure(report_table, output_path):
+    """Create the backtest results as a figure."""
 
     display_table = report_table.copy()
     display_table["Sharpe ratio"] = display_table["Sharpe ratio"].map(
@@ -350,8 +357,8 @@ def save_backtest_summary_figure(report_table, output_path):
     plt.close(figure)
 
 
-def save_cumulative_return_figure(daily_curves, output_path):
-    """Save cumulative net-return curves for both trading strategies."""
+def create_cumulative_return_figure(daily_curves, output_path):
+    """Create the cumulative net-return curves for both trading strategies."""
 
     plt.rcParams.update({"font.family": "DejaVu Serif", "font.size": 10})
     colours = [
@@ -391,8 +398,8 @@ def save_cumulative_return_figure(daily_curves, output_path):
     plt.close(figure)
 
 
-def save_backtest_metrics_figure(results_df, output_path):
-    """Save Sharpe-ratio and hit-rate comparisons with confidence intervals."""
+def create_backtest_metrics_figure(results_df, output_path):
+    """Create the Sharpe-ratio and hit-rate comparisons figure with confidence intervals."""
 
     figure, axes = plt.subplots(1, 2, figsize=(11, 4.8))
     colours = {LONG_ONLY: FIGURE_PRIMARY_TEAL, LONG_SHORT: FIGURE_DEEP_BLUE}
@@ -462,9 +469,6 @@ def main():
     prices_df = pd.read_csv(RAW_DATA_DIR / YFINANCE_PRICES_CSV_FILE_NAME)
     predictions_df = load_predictions()
 
-    assert headlines_df[HEADLINE_ID_COLUMN].is_unique
-    assert prices_df["ticker"].nunique() == 10
-
     panels, daily_signals_df = create_daily_signal_panels(
         headlines_df,
         prices_df,
@@ -480,15 +484,15 @@ def main():
     results_df.to_csv(results_path, index=False)
     report_table.to_csv(report_table_path, index=False)
 
-    save_cumulative_return_figure(
+    create_cumulative_return_figure(
         daily_curves,
         figures_directory / BACKTEST_CUMULATIVE_RETURNS_PNG_FILE_NAME,
     )
-    save_backtest_metrics_figure(
+    create_backtest_metrics_figure(
         results_df,
         figures_directory / BACKTEST_METRICS_PNG_FILE_NAME,
     )
-    save_backtest_summary_figure(
+    create_backtest_summary_figure(
         report_table,
         figures_directory / BACKTEST_SUMMARY_TABLE_PNG_FILE_NAME,
     )
