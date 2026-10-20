@@ -18,7 +18,6 @@ from uk_dkcot.config import (
     NEUTRAL_LABEL,
     SECTOR_KNOWLEDGE_LEVEL,
     PROCESSED_DATA_DIR,
-    VALID_SENTIMENT_LABELS,
     load_companies,
 )
 
@@ -177,7 +176,7 @@ def generate_responses(prompts, tokenizer, model):
         generated_tokens = model.generate(
             **model_inputs,
             max_new_tokens=MAX_NEW_TOKENS,
-            do_sample=False,
+            do_sample=False,  # This is used to enable greedy decoding: https://huggingface.co/docs/transformers/generation_strategies and https://huggingface.co/docs/transformers/v5.20.2/en/main_classes/text_generation
         )
 
     print(

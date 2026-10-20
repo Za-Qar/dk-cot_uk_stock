@@ -39,7 +39,9 @@ from uk_dkcot.config import (
 )
 
 SENTIMENT_SCORES = {NEGATIVE_LABEL: -1, NEUTRAL_LABEL: 0, POSITIVE_LABEL: 1}
-TRANSACTION_COST_BPS = 10
+# Trading transaction costs
+# I need to reference this for the report: https://arxiv.org/pdf/2302.10175
+TRANSACTION_COST_BASIS_POINTS = 10
 BOOTSTRAP_ITERATIONS = 2_000
 BLOCK_LENGTH = 5
 RANDOM_SEED = 2025
@@ -116,6 +118,12 @@ class BacktestResult(TypedDict):
     active_trades: int
     trading_days: int
     transaction_cost_bps: int
+
+
+def convert_basis_points_to_decimal(basis_points: float) -> float:
+    """Convert basis points into a decimal return."""
+
+    return basis_points / 10_000
 
 
 def calculate_annualised_sharpe_ratio(daily_returns) -> float:
@@ -351,16 +359,17 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
     company_backtest_results_df[GROSS_RETURN_COLUMN] = company_backtest_results_df[
         STRATEGY_POSITION_COLUMN
     ] * company_backtest_results_df[FORWARD_RETURN_COLUMN].fillna(0)
-    # Divide basis points by 10,000 to express the transaction cost as a decimal return, then deduct it from the gross return.
+    # Divide basis points by 10,000 to show the transaction cost as a decimal return, then deduct it from the gross return.
     company_backtest_results_df[TRANSACTION_COST_COLUMN] = (
-        company_backtest_results_df[TURNOVER_COLUMN] * TRANSACTION_COST_BPS / 10_000
+        company_backtest_results_df[TURNOVER_COLUMN]
+        * convert_basis_points_to_decimal(TRANSACTION_COST_BASIS_POINTS)
     )
     company_backtest_results_df[NET_RETURN_COLUMN] = (
         company_backtest_results_df[GROSS_RETURN_COLUMN]
         - company_backtest_results_df[TRANSACTION_COST_COLUMN]
     )
 
-    # An active company-day has a non-zero position and an available following-day return.
+    # An active company day has a non-zero position and an available following-day return.
     active_trade_mask = (
         company_backtest_results_df[STRATEGY_POSITION_COLUMN].ne(0)
         & company_backtest_results_df[FORWARD_RETURN_COLUMN].notna()
@@ -459,8 +468,18 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 ].iloc[-1],
                 active_trades=active_trade_count,
                 trading_days=len(daily_backtest_results_df),
-                transaction_cost_bps=TRANSACTION_COST_BPS,
+                transaction_cost_bps=TRANSACTION_COST_BASIS_POINTS,
             )
+            print(
+                f"Annualised Sharpe ratio: "
+                f"{backtest_result[SHARPE_RATIO_COLUMN]:.3f}"
+            )
+            print(f"Hit rate: {backtest_result[HIT_RATE_COLUMN]:.2%}")
+            print(
+                f"Cumulative net return: "
+                f"{backtest_result[CUMULATIVE_RETURN_COLUMN]:.2%}"
+            )
+            print(f"Active company-days: " f"{backtest_result[ACTIVE_TRADES_COLUMN]:,}")
             backtest_result_list.append(backtest_result)
             daily_backtest_results_by_model_and_strategy[(model_name, strategy)] = (
                 daily_backtest_results_df
