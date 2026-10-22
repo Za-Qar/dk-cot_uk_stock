@@ -60,7 +60,7 @@ def build_prompt(headline, company, knowledge_level) -> str:
 
     knowledge = build_knowledge(company, knowledge_level)
 
-    # This prompt was translated from the original Mandarin used by Chen et al. (2025) to English with some adaptations discussed in the dissertation report. The translation was done by Chat GPT
+    # This prompt was translated from the original Mandarin used by Chen et al. (2025) (https://github.com/XMUT-Service-Computing-Group/GLM-Sentiment/blob/main/GLM.py) to English with some adaptations discussed in the dissertation report. The translation was done by Chat GPT and cross-checked with Google translate (https://translate.google.com/)
     return f"""You are an expert in UK financial-news sentiment classification.
 
             Classify the likely sentiment of the headline for investors in the named company:
