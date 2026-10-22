@@ -77,7 +77,9 @@ ACTIVE_TRADE_COLUMN = "active_trade"
 CORRECT_TRADE_COLUMN = "correct_trade"
 ACTIVE_TRADES_COLUMN = "active_trades"
 CORRECT_TRADES_COLUMN = "correct_trades"
+CUMULATIVE_GROSS_RETURN_COLUMN = "cumulative_gross_return"
 CUMULATIVE_RETURN_COLUMN = "cumulative_return"
+TRANSACTION_COST_DRAG_COLUMN = "transaction_cost_drag"
 SHARPE_RATIO_COLUMN = "Sharpe_ratio"
 SHARPE_CI_LOWER_COLUMN = "Sharpe_ci_lower"
 SHARPE_CI_UPPER_COLUMN = "Sharpe_ci_upper"
@@ -92,6 +94,10 @@ CONDITION_REPORT_COLUMN = "Condition"
 STRATEGY_REPORT_COLUMN = "Strategy"
 SHARPE_RATIO_REPORT_COLUMN = "Sharpe ratio"
 HIT_RATE_REPORT_COLUMN = "Hit rate (%)"
+CUMULATIVE_GROSS_RETURN_REPORT_COLUMN = "Cumulative gross return (%)"
+TRANSACTION_COST_DRAG_REPORT_COLUMN = (
+    "Transaction-cost drag (percentage points)"
+)
 CUMULATIVE_RETURN_REPORT_COLUMN = "Cumulative net return (%)"
 ACTIVE_TRADES_REPORT_COLUMN = "Active company-days"
 
@@ -114,6 +120,7 @@ class BacktestResult(TypedDict):
     hit_rate_ci_lower: float
     hit_rate_ci_upper: float
     hit_rate: float
+    cumulative_gross_return: float
     cumulative_return: float
     active_trades: int
     trading_days: int
@@ -403,7 +410,10 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         [GROSS_RETURN_COLUMN, TRANSACTION_COST_COLUMN, NET_RETURN_COLUMN]
     ] /= company_count
 
-    # Compound each daily net return to produce the portfolio's cumulative return path.
+    # Compound the daily gross and net returns to produce both cumulative return paths
+    daily_portfolio_results_df[CUMULATIVE_GROSS_RETURN_COLUMN] = (
+        1 + daily_portfolio_results_df[GROSS_RETURN_COLUMN]
+    ).cumprod() - 1
     daily_portfolio_results_df[CUMULATIVE_RETURN_COLUMN] = (
         1 + daily_portfolio_results_df[NET_RETURN_COLUMN]
     ).cumprod() - 1
@@ -463,6 +473,9 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                     HIT_RATE_CI_UPPER_COLUMN
                 ],
                 hit_rate=hit_rate,
+                cumulative_gross_return=daily_backtest_results_df[
+                    CUMULATIVE_GROSS_RETURN_COLUMN
+                ].iloc[-1],
                 cumulative_return=daily_backtest_results_df[
                     CUMULATIVE_RETURN_COLUMN
                 ].iloc[-1],
@@ -491,7 +504,7 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
     )
 
 
-def create_backtest_table(backtest_results_df) -> pd.DataFrame:
+def create_backtest_table_figure(backtest_results_df) -> pd.DataFrame:
     """Create a backtest table figure."""
 
     backtest_report_df = backtest_results_df[
@@ -500,6 +513,7 @@ def create_backtest_table(backtest_results_df) -> pd.DataFrame:
             STRATEGY_COLUMN,
             SHARPE_RATIO_COLUMN,
             HIT_RATE_COLUMN,
+            CUMULATIVE_GROSS_RETURN_COLUMN,
             CUMULATIVE_RETURN_COLUMN,
             ACTIVE_TRADES_COLUMN,
         ]
@@ -515,6 +529,18 @@ def create_backtest_table(backtest_results_df) -> pd.DataFrame:
     backtest_report_df[HIT_RATE_COLUMN] = (
         backtest_report_df[HIT_RATE_COLUMN] * 100
     ).round(2)
+    backtest_report_df.insert(
+        backtest_report_df.columns.get_loc(CUMULATIVE_RETURN_COLUMN),
+        TRANSACTION_COST_DRAG_COLUMN,
+        backtest_report_df[CUMULATIVE_GROSS_RETURN_COLUMN]
+        - backtest_report_df[CUMULATIVE_RETURN_COLUMN],
+    )
+    backtest_report_df[CUMULATIVE_GROSS_RETURN_COLUMN] = (
+        backtest_report_df[CUMULATIVE_GROSS_RETURN_COLUMN] * 100
+    ).round(2)
+    backtest_report_df[TRANSACTION_COST_DRAG_COLUMN] = (
+        backtest_report_df[TRANSACTION_COST_DRAG_COLUMN] * 100
+    ).round(2)
     backtest_report_df[CUMULATIVE_RETURN_COLUMN] = (
         backtest_report_df[CUMULATIVE_RETURN_COLUMN] * 100
     ).round(2)
@@ -525,6 +551,10 @@ def create_backtest_table(backtest_results_df) -> pd.DataFrame:
             STRATEGY_COLUMN: STRATEGY_REPORT_COLUMN,
             SHARPE_RATIO_COLUMN: SHARPE_RATIO_REPORT_COLUMN,
             HIT_RATE_COLUMN: HIT_RATE_REPORT_COLUMN,
+            CUMULATIVE_GROSS_RETURN_COLUMN: (
+                CUMULATIVE_GROSS_RETURN_REPORT_COLUMN
+            ),
+            TRANSACTION_COST_DRAG_COLUMN: TRANSACTION_COST_DRAG_REPORT_COLUMN,
             CUMULATIVE_RETURN_COLUMN: CUMULATIVE_RETURN_REPORT_COLUMN,
             ACTIVE_TRADES_COLUMN: ACTIVE_TRADES_REPORT_COLUMN,
         }
@@ -544,6 +574,16 @@ def create_backtest_summary_figure(backtest_report_df, output_path):
     formatted_backtest_report_df[HIT_RATE_REPORT_COLUMN] = formatted_backtest_report_df[
         HIT_RATE_REPORT_COLUMN
     ].map(lambda value: f"{value:.2f}%")
+    formatted_backtest_report_df[CUMULATIVE_GROSS_RETURN_REPORT_COLUMN] = (
+        formatted_backtest_report_df[CUMULATIVE_GROSS_RETURN_REPORT_COLUMN].map(
+            lambda value: f"{value:.2f}%"
+        )
+    )
+    formatted_backtest_report_df[TRANSACTION_COST_DRAG_REPORT_COLUMN] = (
+        formatted_backtest_report_df[TRANSACTION_COST_DRAG_REPORT_COLUMN].map(
+            lambda value: f"{value:.2f}"
+        )
+    )
     formatted_backtest_report_df[CUMULATIVE_RETURN_REPORT_COLUMN] = (
         formatted_backtest_report_df[CUMULATIVE_RETURN_REPORT_COLUMN].map(
             lambda value: f"{value:.2f}%"
@@ -555,20 +595,31 @@ def create_backtest_summary_figure(backtest_report_df, output_path):
         )
     )
 
+    figure_column_labels = [
+        CONDITION_REPORT_COLUMN,
+        STRATEGY_REPORT_COLUMN,
+        "Sharpe\nratio",
+        "Hit rate\n(%)",
+        "Cumulative gross\nreturn (%)",
+        "Transaction-cost drag\n(percentage points)",
+        "Cumulative net\nreturn (%)",
+        "Active\ncompany-days",
+    ]
+
     plt.rcParams.update(get_figure_font_settings(9))
-    figure, axis = plt.subplots(figsize=(12, 4.2))
+    figure, axis = plt.subplots(figsize=(15, 3.2))
     axis.axis("off")
     figure_table = axis.table(
         cellText=formatted_backtest_report_df.to_numpy(),
-        colLabels=formatted_backtest_report_df.columns,
+        colLabels=figure_column_labels,
         cellLoc="center",
         colLoc="center",
-        colWidths=[0.19, 0.13, 0.13, 0.13, 0.23, 0.18],
+        colWidths=[0.15, 0.10, 0.095, 0.095, 0.14, 0.16, 0.14, 0.12],
         loc="center",
     )
     figure_table.auto_set_font_size(False)
-    figure_table.set_fontsize(8.5)
-    figure_table.scale(1, 1.55)
+    figure_table.set_fontsize(8)
+    figure_table.scale(1, 1.45)
 
     for (row_index, column_index), cell in figure_table.get_celld().items():
         cell.set_edgecolor("#D6DEDA")
@@ -580,9 +631,9 @@ def create_backtest_summary_figure(backtest_report_df, output_path):
         if row_index > 0 and column_index in (0, 1):
             cell.set_text_props(ha="left")
 
-    axis.set_title("Backtest performance summary", fontsize=13, pad=12)
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=300, bbox_inches="tight")
+    axis.set_title("Backtest performance summary", fontsize=13, pad=6)
+    figure.subplots_adjust(left=0.01, right=0.99, top=0.88, bottom=0.01)
+    figure.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.03)
     plt.close(figure)
 
 
@@ -729,7 +780,7 @@ def main():
         backtest_results_df,
         daily_backtest_results_by_model_and_strategy,
     ) = evaluate_model_backtests(daily_signal_panels_by_model)
-    backtest_report_df = create_backtest_table(backtest_results_df)
+    backtest_report_df = create_backtest_table_figure(backtest_results_df)
 
     daily_signals_file_path = PROCESSED_DATA_DIR / DAILY_SIGNALS_CSV_FILE_NAME
     backtest_results_file_path = PROCESSED_DATA_DIR / BACKTEST_RESULTS_CSV_FILE_NAME
