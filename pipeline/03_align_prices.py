@@ -37,6 +37,7 @@ def create_headline_id(row):
 def align_company_headlines(headlines, prices):
     """Assign each headline to the company's next available trading-day open."""
 
+    # https://pandas.pydata.org/docs/reference/api/pandas.merge_asof.html
     return pd.merge_asof(
         headlines.sort_values(HEADLINE_DATE_LONDON_COLUMN),
         prices.sort_values(TRADE_DATE_COLUMN),

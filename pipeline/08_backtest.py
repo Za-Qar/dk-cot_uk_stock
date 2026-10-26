@@ -150,6 +150,8 @@ def calculate_annualised_sharpe_ratio(daily_returns) -> float:
     # https://doi.org/10.1086/294846
     # Multiplication by the square root of 252 annualises a daily ratio under the usual independent-return assumption. Lo (2002) explains why serial correlation can affect this scaling.
     # https://doi.org/10.2469/faj.v58.n4.2453
+    # The number 252 was used because it is a standard approximation of the trading days in a year
+    # https://doi.org/10.1007/s10489-021-02249-x
     return (
         np.sqrt(252) * daily_returns_np_array.mean() / daily_returns_standard_deviation
     )
@@ -440,10 +442,10 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 daily_signal_panels_by_model[model_name],
                 strategy,
             )
-            active_trade_count = int(
+            total_active_company_days = int(
                 daily_backtest_results_df[ACTIVE_TRADES_COLUMN].sum()
             )
-            correct_trade_count = int(
+            correct_active_company_days = int(
                 daily_backtest_results_df[CORRECT_TRADES_COLUMN].sum()
             )
             backtest_confidence_intervals = calculate_backtest_confidence_intervals(
@@ -454,8 +456,18 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
 
             # Hit rate is the proportion of active company-days for which the position direction matched the following return direction.
             hit_rate = (
-                correct_trade_count / active_trade_count if active_trade_count else 0.0
+                correct_active_company_days / total_active_company_days if total_active_company_days else 0.0
             )
+
+            print(
+                "---------------------------------Hit rate calculation result:---------------------------------"
+            )
+            print(
+                f"Hit rate calculation: {correct_active_company_days:,} correct active company-days "
+                f"/ {total_active_company_days:,} total active company-days "
+                f"= {hit_rate:,}"
+            )
+
             backtest_result = BacktestResult(
                 model=model_name,
                 model_id=model_id,
@@ -479,7 +491,7 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 cumulative_return=daily_backtest_results_df[
                     CUMULATIVE_RETURN_COLUMN
                 ].iloc[-1],
-                active_trades=active_trade_count,
+                active_trades=total_active_company_days,
                 trading_days=len(daily_backtest_results_df),
                 transaction_cost_bps=TRANSACTION_COST_BASIS_POINTS,
             )

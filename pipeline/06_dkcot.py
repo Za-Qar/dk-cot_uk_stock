@@ -96,7 +96,7 @@ def build_prompt(headline, company, knowledge_level) -> str:
 def parse_sentiment(raw_output) -> tuple[str, bool]:
     """Extract a valid sentiment label from the model's JSON response."""
 
-    # Regex to search through Qwen's response and return them as a type of list of string
+    # Regex to search through Qwen's response and return them as a type of list of string. Only the `sentiment` label is extracted for classification. The full Qwen response, including Entity, Event and Impact, is saved separately in the raw_output column of `dkcot_predictions.csv`.
     matches: list[str] = re.findall(
         r"[\"']?sentiment[\"']?\s*[:：]\s*[\"']?\s*(positive|neutral|negative)\b",
         raw_output,

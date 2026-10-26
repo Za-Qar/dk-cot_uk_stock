@@ -425,6 +425,16 @@ def main():
 
     gold_df, predictions_df = load_and_get_gold_labels_and_model_predictions_data()
     results_df, paired_predictions = evaluate_models(gold_df, predictions_df)
+
+    print(
+        "---------------------------------Classification results:---------------------------------"
+    )
+    print(
+    results_df[
+            [MODEL_COLUMN, ACCURACY_COLUMN, MACRO_F1_COLUMN]
+        ].to_string(index=False, float_format=lambda value: f"{value:.3f}")
+    )
+
     mc_nemar_tests_df = run_mcnemar_tests_per_model_variant(paired_predictions)
 
     classification_results_path = (
