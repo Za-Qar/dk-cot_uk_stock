@@ -15,6 +15,7 @@ from uk_dkcot.config import (
     DKCOT_KNOWLEDGE_LEVELS,
     DKCOT_MODEL_NAME,
     DKCOT_PREDICTIONS_CSV_FILE_NAME,
+    FIRM_KNOWLEDGE_LEVEL,
     FINBERT_DISPLAY_NAME,
     FINBERT_MODEL_NAME,
     FINBERT_PREDICTIONS_CSV_FILE_NAME,
@@ -435,7 +436,49 @@ def main():
         ].to_string(index=False, float_format=lambda value: f"{value:.3f}")
     )
 
+    # Get the row containing FinBERT's classification results
+    finbert_results = results_df.loc[
+        results_df[MODEL_COLUMN] == FINBERT_DISPLAY_NAME
+    ].iloc[0]
+    # Get the row containing the firm-knowledge DK-CoT classification results.
+    firm_dkcot_results = results_df.loc[
+        (results_df[MODEL_ID_COLUMN] == DKCOT_MODEL_NAME)
+        & (results_df[KNOWLEDGE_LEVEL_COLUMN] == FIRM_KNOWLEDGE_LEVEL)
+    ].iloc[0]
+
+    # Calculate how many percentage points higher the firm-knowledge DK-CoT accuracy is than FinBERT's accuracy.
+    accuracy_improvement_percentage_points = (
+        firm_dkcot_results[ACCURACY_COLUMN]
+        - finbert_results[ACCURACY_COLUMN]
+    ) * 100
+    # Calculate the difference between the firm-knowledge DK-CoT and FinBERT Macro-F1 scores.
+    macro_f1_improvement = (
+        firm_dkcot_results[MACRO_F1_COLUMN]
+        - finbert_results[MACRO_F1_COLUMN]
+    )
+
+    print(
+        "---------------------------------Firm DK-CoT compared with FinBERT:---------------------------------"
+    )
+    # Use `.1f` to display to one decimal place
+    print(
+        f"Accuracy improvement: "
+        f"{accuracy_improvement_percentage_points:.1f} percentage points"
+    )
+    # Use `.3f` to display to three decimal places
+    print(f"Macro-F1 improvement: {macro_f1_improvement:.3f}")
+
     mc_nemar_tests_df = run_mcnemar_tests_per_model_variant(paired_predictions)
+
+    print(
+        "---------------------------------Paired McNemar results:---------------------------------"
+    )
+    print(
+        mc_nemar_tests_df.to_string(
+            index=False,
+            float_format=lambda value: f"{value:.6f}",
+        )
+    )
 
     classification_results_path = (
         tables_directory / CLASSIFICATION_RESULTS_CSV_FILE_NAME

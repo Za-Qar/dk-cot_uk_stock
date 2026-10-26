@@ -495,10 +495,12 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 trading_days=len(daily_backtest_results_df),
                 transaction_cost_bps=TRANSACTION_COST_BASIS_POINTS,
             )
+            # Use `.3f` to display to 3 decimal places 
             print(
                 f"Annualised Sharpe ratio: "
                 f"{backtest_result[SHARPE_RATIO_COLUMN]:.3f}"
             )
+            # Use `.2%` is used to convert values to percentages and 2 decimal places
             print(f"Hit rate: {backtest_result[HIT_RATE_COLUMN]:.2%}")
             print(
                 f"Cumulative net return: "
