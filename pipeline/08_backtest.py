@@ -99,7 +99,7 @@ TRANSACTION_COST_DRAG_REPORT_COLUMN = (
     "Transaction-cost drag (percentage points)"
 )
 CUMULATIVE_RETURN_REPORT_COLUMN = "Cumulative net return (%)"
-ACTIVE_TRADES_REPORT_COLUMN = "Active company-days"
+ACTIVE_TRADES_REPORT_COLUMN = "Active company days"
 
 
 class BacktestConfidenceIntervals(TypedDict):
@@ -294,7 +294,7 @@ def create_daily_sentiment_signal_panels(
     # As for the reason why there is a `1` being subtracted. This was found when an issue faced when the price ratio equals one (as in it has not changed). So the `-1` is to cater for that and provide a value of `0` when there is no price change.
     # This was tricky initially but the following source was used to make this work (see "Example 1.6 (Simple return calculation)" from the source specifically) (Zivot, 2022):
     # https://bookdown.org/compfinezbook/introFinRbook/Return-Calculations.html
-    # Zivot, E. (2022) Introduction to computational finance and financial econometrics with R. Available at: https://bookdown.org/compfinezbook/introFinRbook/Return-Calculations.html (Accessed: 20 August 2026).
+    # Zivot, E. (2022) Introduction to computational finance and financial econometrics with R. Available at: https://bookdown.org/compfinezbook/introFinRbook/index.html (Accessed: 20 August 2026).
     prices_with_forward_returns_df[FORWARD_RETURN_COLUMN] = (
         prices_with_forward_returns_df[NEXT_OPEN_COLUMN]
         / prices_with_forward_returns_df[OPEN_COLUMN]
@@ -328,7 +328,7 @@ def create_daily_sentiment_signal_panels(
         model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN] = (
             model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].fillna(0.0)
         )
-        # Convert into a trading position from the mean value using `np.sign`.
+        # Convert into a trading position from the mean value using `np.sign`
         # https://numpy.org/doc/stable/reference/generated/numpy.sign.html
         model_daily_signal_panel_df[POSITION_COLUMN] = np.sign(
             model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN]
@@ -361,34 +361,6 @@ def create_daily_sentiment_signal_panels(
         ignore_index=True,
     )
 
-def print_single_model_daily_signal(model_daily_signal_panel_df: pd.DataFrame, model_name: str) -> None:
-    """Print a summary and sample of company day signals for one model condition."""
-
-    matched_signal_mask = model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].notna()
-
-    print(
-        f"\n---------------------------------Daily company-day signal preview:---------------------------------"
-    )
-    print(f"\nDaily signal panel for {model_name}")
-    print(f"Total company day rows: {len(model_daily_signal_panel_df):,}")
-    print(f"Rows with sentiment signals: {matched_signal_mask.sum():,}")
-
-    print(
-        model_daily_signal_panel_df.loc[
-            matched_signal_mask,
-            [
-                DATE_COLUMN,
-                TICKER_COLUMN,
-                OPEN_COLUMN,
-                NEXT_OPEN_COLUMN,
-                FORWARD_RETURN_COLUMN,
-                SENTIMENT_SCORE_COLUMN,
-            ],
-        ]
-        .head(10)
-        .to_string(index=False)
-    )
-
 def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
     """Apply one strategy to a model's daily company-level signals."""
 
@@ -406,10 +378,10 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
     # - long-short: negative signals become short positions.
     # https://www.investor.gov/introduction-investing/investing-basics/how-stock-markets-work/stock-purchases-and-sales-long-and
 
-    # The implementation here is also backed up by Suenot (no date):
+    # The implementation here is also backed up by Suenot (2026):
     # https://github.com/suenot/061-llm-alpha-mining
     # Specifically the `04: Backtesting LLM Alphas` section in the README file
-    # suenot (no date) 061-llm-alpha-mining [source code]. GitHub. Available at: https://github.com/suenot/061-llm-alpha-mining (Accessed: 20 August 2026).
+    # Soloviov, E (2026) 061-llm-alpha-mining [source code]. GitHub. Available at: https://github.com/suenot/061-llm-alpha-mining (Accessed: 20 August 2026).
     if strategy == LONG_ONLY:
         company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
             company_backtest_results_df[POSITION_COLUMN].clip(lower=0)
@@ -428,38 +400,54 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         STRATEGY_POSITION_COLUMN,
     ] = 0
 
-    # Get the previous trading position separately for each company
+    # Get the previous trading position separately for each company. Use `shift(1)` to move each company's positions down by one row so that the current position can be compared with the position from the previous available trading date.
+    # https://pandas.pydata.org/docs/reference/api/pandas.core.groupby.SeriesGroupBy.shift.html
     previous_strategy_position = company_backtest_results_df.groupby(TICKER_COLUMN)[
         STRATEGY_POSITION_COLUMN
-    ].shift(1) # Use `shift(1)` to move each company’s positions down by one row so the current position can be compared with its position on the previous available trading date
-    # The first position for each company has no previous value, so assume that the strategy started in cash with a position of zero
+    ].shift(1)
+    # The first position for each company has no previous value, so assume that the strategy started in cash with a position of zero.
     previous_strategy_position = previous_strategy_position.fillna(0)
-    # Calculate how much the position changed. The absolute value makes both entries and exits positive. For example, 0 to 1 gives turnover of 1, 1 to 0 gives 1, and -1 to 1 gives 2
+
+    # Calculate how much the position changed. Use `.abs()` to return the absolute value of the difference without a negative sign. This means that 0 to 1 and 1 to 0 both give turnover of 1, while switching directly from -1 to 1 gives turnover of 2.
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.abs.html
     company_backtest_results_df[TURNOVER_COLUMN] = (
         company_backtest_results_df[STRATEGY_POSITION_COLUMN]
         - previous_strategy_position
     ).abs()
+    print_turnover_calculation_to_console(
+        company_backtest_results_df,
+        previous_strategy_position,
+        strategy,
+    )
 
-    # Multiplying the position by the following open-to-open return makes a short position profitable when the price falls.
+    # Multiply the position by the following open-to-open return to calculate the gross return. A short position becomes profitable when the price falls because a negative position multiplied by a negative return produces a positive return.
+    # Use `.fillna(0)` to replace an unavailable forward return with zero after its position has already been set to zero above.
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.fillna.html
     company_backtest_results_df[GROSS_RETURN_COLUMN] = company_backtest_results_df[
         STRATEGY_POSITION_COLUMN
     ] * company_backtest_results_df[FORWARD_RETURN_COLUMN].fillna(0)
-    # Divide basis points by 10,000 to show the transaction cost as a decimal return, then deduct it from the gross return.
+    # Multiply turnover by the transaction cost expressed as a decimal return to calculate the cost caused by changing the position.
     company_backtest_results_df[TRANSACTION_COST_COLUMN] = (
         company_backtest_results_df[TURNOVER_COLUMN]
         * convert_basis_points_to_decimal(TRANSACTION_COST_BASIS_POINTS)
     )
+    # Deduct the transaction cost from the gross return to calculate the net return after trading costs.
     company_backtest_results_df[NET_RETURN_COLUMN] = (
         company_backtest_results_df[GROSS_RETURN_COLUMN]
         - company_backtest_results_df[TRANSACTION_COST_COLUMN]
     )
 
-    # An active company day has a non-zero position and an available following-day return.
+    # Use `.ne(0)` and `.notna()` to identify company days with a non-zero position and an available following-day return.
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.ne.html
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.notna.html
     active_trade_mask = (
         company_backtest_results_df[STRATEGY_POSITION_COLUMN].ne(0)
         & company_backtest_results_df[FORWARD_RETURN_COLUMN].notna()
     )
+    # Use `.astype(int)` to convert `True` and `False` into `1` and `0` so that the active company days can later be counted using `.sum()`.
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.astype.html
     company_backtest_results_df[ACTIVE_TRADE_COLUMN] = active_trade_mask.astype(int)
+    # Count an active company day as correct when the position and forward return produce a value above zero, which occurs when a long position is followed by a price rise or a short position is followed by a price fall.
     company_backtest_results_df[CORRECT_TRADE_COLUMN] = (
         active_trade_mask
         & (
@@ -469,8 +457,11 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         )
     ).astype(int)
 
-    # Each company has a fixed 10% portfolio weight. Unused allocations remain cash.
+    # Use `.nunique()` to count the companies so that the portfolio values can be equally weighted without hard-coding the number ten.
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.nunique.html
     company_count = company_backtest_results_df[TICKER_COLUMN].nunique()
+    # Use `.agg()` to sum the company-level gross returns, transaction costs, net returns and trade counts for each trading date.
+    # https://pandas.pydata.org/docs/reference/api/pandas.core.groupby.DataFrameGroupBy.agg.html
     daily_portfolio_results_df = (
         company_backtest_results_df.groupby(DATE_COLUMN, as_index=False)
         .agg(
@@ -482,31 +473,36 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         )
         .sort_values(DATE_COLUMN)
     )
-    # Daily company returns are summed and divided by ten, giving each company an effective 10% portfolio weight.
-    # Where no position is taken for a company, its contribution is zero and the unused allocation is treated as remaining in cash.
+    # Divide the daily sums by the number of companies (ten), giving each company a 10% portfolio allocation. A company with no position contributes no gross return and its allocation remains in cash, although closing a previous position can still incur a transaction cost.
     daily_portfolio_results_df[
         [GROSS_RETURN_COLUMN, TRANSACTION_COST_COLUMN, NET_RETURN_COLUMN]
     ] /= company_count
 
-    # Compound the daily gross and net returns to produce both cumulative return paths
+    # Add `1` to convert each daily return into a growth factor, use `.cumprod()` to multiply the growth factors across the trading dates and subtract `1` to convert the result back into a cumulative return
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.cumprod.html
     daily_portfolio_results_df[CUMULATIVE_GROSS_RETURN_COLUMN] = (
         1 + daily_portfolio_results_df[GROSS_RETURN_COLUMN]
     ).cumprod() - 1
+    # Repeat the same compounding calculation using the net returns to produce the cumulative return after transaction costs.
     daily_portfolio_results_df[CUMULATIVE_RETURN_COLUMN] = (
         1 + daily_portfolio_results_df[NET_RETURN_COLUMN]
     ).cumprod() - 1
 
+    # Return one row per trading date containing the daily and cumulative portfolio results.
     return daily_portfolio_results_df
 
 
 def evaluate_model_backtests(daily_signal_panels_by_model):
     """Evaluate both trading rules for every sentiment model."""
 
+    # Instantiate a list to store one summary result for each model and strategy combination later on.
     backtest_result_list: list[BacktestResult] = []
+    # Retain the daily results because they are later used to create the figures.
     daily_backtest_results_by_model_and_strategy = {}
+    # Start from the fixed seed and use a different reproducible seed for each model and strategy bootstrap.
     bootstrap_seed = RANDOM_SEED
 
-    # Run both trading strategies independently for each of the four model variants.
+    # Evaluate both trading strategies independently for each model condition.
     for model_name, model_id, knowledge_level in MODEL_VARIANTS:
         for strategy in STRATEGIES:
             print(
@@ -514,23 +510,27 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
             )
             print(f"Evaluating {model_name} with the {strategy} strategy")
 
+            # Apply the selected trading rule to the current model's daily signals.
             daily_backtest_results_df = run_backtest_strategy(
                 daily_signal_panels_by_model[model_name],
                 strategy,
             )
+            # Count how many company days had an active position and how many of those positions correctly matched the following return direction.
             total_active_company_days = int(
                 daily_backtest_results_df[ACTIVE_TRADES_COLUMN].sum()
             )
             correct_active_company_days = int(
                 daily_backtest_results_df[CORRECT_TRADES_COLUMN].sum()
             )
+            # Estimate the Sharpe ratio and hit rate confidence intervals using the five-day block-bootstrap method.
             backtest_confidence_intervals = calculate_backtest_confidence_intervals(
                 daily_backtest_results_df,
                 bootstrap_seed,
             )
+            # Change the seed before evaluating the next combination while keeping every run reproducible.
             bootstrap_seed += 1
 
-            # Hit rate is the proportion of active company-days for which the position direction matched the following return direction.
+            # Hit rate is the proportion of active company days for which the position direction matched the following return direction.
             hit_rate = (
                 correct_active_company_days / total_active_company_days if total_active_company_days else 0.0
             )
@@ -539,11 +539,12 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 "---------------------------------Hit rate calculation result:---------------------------------"
             )
             print(
-                f"Hit rate calculation: {correct_active_company_days:,} correct active company-days "
-                f"/ {total_active_company_days:,} total active company-days "
+                f"Hit rate calculation: {correct_active_company_days:,} correct active company days "
+                f"/ {total_active_company_days:,} total active company days "
                 f"= {hit_rate:,}"
             )
 
+            # Collect the point estimates, confidence limits and final cumulative returns in one summary row.
             backtest_result = BacktestResult(
                 model=model_name,
                 model_id=model_id,
@@ -582,16 +583,105 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 f"Cumulative net return: "
                 f"{backtest_result[CUMULATIVE_RETURN_COLUMN]:.2%}"
             )
-            print(f"Active company-days: " f"{backtest_result[ACTIVE_TRADES_COLUMN]:,}")
+            print(f"Active company days: " f"{backtest_result[ACTIVE_TRADES_COLUMN]:,}")
+            # Add the summary row and retain the complete daily return series.
             backtest_result_list.append(backtest_result)
             daily_backtest_results_by_model_and_strategy[(model_name, strategy)] = (
                 daily_backtest_results_df
             )
 
+    # Return the eight-row summary table and the daily results used by the figures
     return (
         pd.DataFrame(backtest_result_list),
         daily_backtest_results_by_model_and_strategy,
     )
+
+
+def print_single_model_daily_signal(model_daily_signal_panel_df: pd.DataFrame, model_name: str) -> None:
+    """Print a summary and sample of company day signals for one model condition."""
+
+    matched_signal_mask = model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].notna()
+
+    print(
+        f"\n---------------------------------Daily company day signal preview:---------------------------------"
+    )
+    print(f"\nDaily signal panel for {model_name}")
+    print(f"Total company day rows: {len(model_daily_signal_panel_df):,}")
+    print(f"Rows with sentiment signals: {matched_signal_mask.sum():,}")
+
+    print(
+        model_daily_signal_panel_df.loc[
+            matched_signal_mask,
+            [
+                DATE_COLUMN,
+                TICKER_COLUMN,
+                OPEN_COLUMN,
+                NEXT_OPEN_COLUMN,
+                FORWARD_RETURN_COLUMN,
+                SENTIMENT_SCORE_COLUMN,
+            ],
+        ]
+        .head(10)
+        .to_string(index=False)
+    )
+
+def print_turnover_calculation_to_console(
+    company_backtest_results_df: pd.DataFrame,
+    previous_strategy_position: pd.Series,
+    strategy: str,
+) -> None:
+    """Print a sample of the actual position changes used to calculate turnover."""
+
+    current_strategy_position = company_backtest_results_df[
+        STRATEGY_POSITION_COLUMN
+    ].astype(int)
+    previous_strategy_position = previous_strategy_position.astype(int)
+
+    # Use `np.select()` to give each possible position change a readable description so that the calculated turnover is easier to inspect
+    # https://numpy.org/doc/stable/reference/generated/numpy.select.html
+    position_change = np.select(
+        [
+            previous_strategy_position.eq(0) & current_strategy_position.eq(1),
+            previous_strategy_position.eq(1) & current_strategy_position.eq(0),
+            previous_strategy_position.eq(0) & current_strategy_position.eq(-1),
+            previous_strategy_position.eq(-1) & current_strategy_position.eq(0),
+            previous_strategy_position.eq(-1) & current_strategy_position.eq(1),
+            previous_strategy_position.eq(1) & current_strategy_position.eq(-1),
+        ],
+        [
+            "Enter long",
+            "Exit long",
+            "Enter short",
+            "Exit short",
+            "Switch short to long",
+            "Switch long to short",
+        ],
+        default="Position unchanged",
+    )
+
+    turnover_preview_df = pd.DataFrame(
+        {
+            TICKER_COLUMN: company_backtest_results_df[TICKER_COLUMN],
+            DATE_COLUMN: company_backtest_results_df[DATE_COLUMN],
+            "previous_position": previous_strategy_position,
+            "current_position": current_strategy_position,
+            TURNOVER_COLUMN: company_backtest_results_df[TURNOVER_COLUMN].astype(int),
+            "position_change": position_change,
+        }
+    )
+
+    # Show actual position changes rather than rows where the position stayed the same
+    turnover_preview_df = turnover_preview_df.loc[
+        turnover_preview_df[TURNOVER_COLUMN].gt(0)
+    ].head(10)
+
+    print(
+        f"\n---------------------------------Turnover calculation for {strategy}:---------------------------------"
+    )
+    if turnover_preview_df.empty:
+        print("No position changes were produced.")
+    else:
+        print(turnover_preview_df.to_string(index=False))
 
 
 def create_backtest_table_figure(backtest_results_df) -> pd.DataFrame:
@@ -693,7 +783,7 @@ def create_backtest_summary_figure(backtest_report_df, output_path):
         "Cumulative gross\nreturn (%)",
         "Transaction-cost drag\n(percentage points)",
         "Cumulative net\nreturn (%)",
-        "Active\ncompany-days",
+        "Active\ncompany days",
     ]
 
     plt.rcParams.update(get_figure_font_settings(9))

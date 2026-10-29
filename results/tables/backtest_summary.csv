@@ -1,4 +1,4 @@
-Condition,Strategy,Sharpe ratio,Hit rate (%),Cumulative gross return (%),Transaction-cost drag (percentage points),Cumulative net return (%),Active company-days
+Condition,Strategy,Sharpe ratio,Hit rate (%),Cumulative gross return (%),Transaction-cost drag (percentage points),Cumulative net return (%),Active company days
 FinBERT,Long-only,-0.289,52.53,4.57,6.15,-1.58,632
 FinBERT,Long-short,-2.312,49.84,-1.8,9.62,-11.42,941
 DK-CoT (none),Long-only,-0.058,53.34,6.55,7.02,-0.47,703
