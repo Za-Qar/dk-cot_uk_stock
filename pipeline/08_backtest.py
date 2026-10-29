@@ -386,7 +386,7 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
             company_backtest_results_df[POSITION_COLUMN].clip(lower=0)
         )
-    # Long-short permits both positive and negative positions, so retain
+    # `LONG_SHORT` permits both positive and negative positions, so retain the original position
     elif strategy == LONG_SHORT:
         company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
             company_backtest_results_df[POSITION_COLUMN]
@@ -527,7 +527,7 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 daily_backtest_results_df,
                 bootstrap_seed,
             )
-            # Change the seed before evaluating the next combination while keeping every run reproducible.
+            # Increase the seed so that each model and strategy uses a different but reproducible set of bootstrap samples
             bootstrap_seed += 1
 
             # Hit rate is the proportion of active company days for which the position direction matched the following return direction.
@@ -544,7 +544,7 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 f"= {hit_rate:,}"
             )
 
-            # Collect the point estimates, confidence limits and final cumulative returns in one summary row.
+            # Collect the point estimates, confidence limits and final cumulative returns in one summary row
             backtest_result = BacktestResult(
                 model=model_name,
                 model_id=model_id,
