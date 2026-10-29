@@ -431,9 +431,9 @@ def main():
         "---------------------------------Classification results:---------------------------------"
     )
     print(
-    results_df[
-            [MODEL_COLUMN, ACCURACY_COLUMN, MACRO_F1_COLUMN]
-        ].to_string(index=False, float_format=lambda value: f"{value:.4f}")
+        results_df[[MODEL_COLUMN, ACCURACY_COLUMN, MACRO_F1_COLUMN]].to_string(
+            index=False, float_format=lambda value: f"{value:.4f}"
+        )
     )
 
     # Get the row containing FinBERT's classification results
@@ -448,13 +448,11 @@ def main():
 
     # Calculate how many percentage points higher the firm-knowledge DK-CoT accuracy is than FinBERT's accuracy.
     accuracy_improvement_percentage_points = (
-        firm_dkcot_results[ACCURACY_COLUMN]
-        - finbert_results[ACCURACY_COLUMN]
+        firm_dkcot_results[ACCURACY_COLUMN] - finbert_results[ACCURACY_COLUMN]
     ) * 100
     # Calculate the difference between the firm-knowledge DK-CoT and FinBERT Macro-F1 scores.
     macro_f1_improvement = (
-        firm_dkcot_results[MACRO_F1_COLUMN]
-        - finbert_results[MACRO_F1_COLUMN]
+        firm_dkcot_results[MACRO_F1_COLUMN] - finbert_results[MACRO_F1_COLUMN]
     )
 
     print(

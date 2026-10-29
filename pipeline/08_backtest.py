@@ -95,9 +95,7 @@ STRATEGY_REPORT_COLUMN = "Strategy"
 SHARPE_RATIO_REPORT_COLUMN = "Sharpe ratio"
 HIT_RATE_REPORT_COLUMN = "Hit rate (%)"
 CUMULATIVE_GROSS_RETURN_REPORT_COLUMN = "Cumulative gross return (%)"
-TRANSACTION_COST_DRAG_REPORT_COLUMN = (
-    "Transaction-cost drag (percentage points)"
-)
+TRANSACTION_COST_DRAG_REPORT_COLUMN = "Transaction-cost drag (percentage points)"
 CUMULATIVE_RETURN_REPORT_COLUMN = "Cumulative net return (%)"
 ACTIVE_TRADES_REPORT_COLUMN = "Active company days"
 
@@ -186,10 +184,14 @@ def calculate_backtest_confidence_intervals(
         )
         bootstrap_sample_indices = np.concatenate(
             [
-                np.arange(start_index, start_index + BLOCK_LENGTH) # Create the row positions for a block of five consecutive trading days, beginning at the randomly selected starting row
+                np.arange(
+                    start_index, start_index + BLOCK_LENGTH
+                )  # Create the row positions for a block of five consecutive trading days, beginning at the randomly selected starting row
                 for start_index in bootstrap_block_start_indices
             ]
-        )[:trading_day_count] # Trim array so the bootstrap sample contains the same number of days as the original dataset
+        )[
+            :trading_day_count
+        ]  # Trim array so the bootstrap sample contains the same number of days as the original dataset
         bootstrap_sample_df = daily_backtest_results_df.iloc[bootstrap_sample_indices]
         bootstrap_sharpe_ratio_values.append(
             calculate_annualised_sharpe_ratio(bootstrap_sample_df[NET_RETURN_COLUMN])
@@ -259,10 +261,13 @@ def create_daily_sentiment_signal_panels(
             MODEL_ID_COLUMN,
             KNOWLEDGE_LEVEL_COLUMN,
         ],
-        as_index=False, # Keep TRADE_DATE_COLUMN, TICKER_COLUMN, MODEL_ID_COLUMN and KNOWLEDGE_LEVEL_COLUMN as dataframe columns rather than index levels in the resulting dataframe
+        as_index=False,  # Keep TRADE_DATE_COLUMN, TICKER_COLUMN, MODEL_ID_COLUMN and KNOWLEDGE_LEVEL_COLUMN as dataframe columns rather than index levels in the resulting dataframe
         # https://stackoverflow.com/questions/51866908/difference-between-as-index-false-and-reset-index-in-pandas-groupby
     ).agg(
-        sentiment_score=(SENTIMENT_SCORE_COLUMN, "mean"), # Create an output column named SENTIMENT_SCORE_COLUMN. The value is the "mean" of SENTIMENT_SCORE_COLUMN within each group. For example, scores of [1, 1, -1] produce a mean score of 0.33. Later on, `np.sign()`` will convert that into a positive position considering a zero mean becomes neutral, a positive mean becomes positive and a negative number mean becomes a negative trading position.
+        sentiment_score=(
+            SENTIMENT_SCORE_COLUMN,
+            "mean",
+        ),  # Create an output column named SENTIMENT_SCORE_COLUMN. The value is the "mean" of SENTIMENT_SCORE_COLUMN within each group. For example, scores of [1, 1, -1] produce a mean score of 0.33. Later on, `np.sign()`` will convert that into a positive position considering a zero mean becomes neutral, a positive mean becomes positive and a negative number mean becomes a negative trading position.
     )
 
     # Work on a copy so the original price DataFrame remains unchanged
@@ -361,6 +366,7 @@ def create_daily_sentiment_signal_panels(
         ignore_index=True,
     )
 
+
 def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
     """Apply one strategy to a model's daily company-level signals."""
 
@@ -427,10 +433,9 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         STRATEGY_POSITION_COLUMN
     ] * company_backtest_results_df[FORWARD_RETURN_COLUMN].fillna(0)
     # Multiply turnover by the transaction cost expressed as a decimal return to calculate the cost caused by changing the position.
-    company_backtest_results_df[TRANSACTION_COST_COLUMN] = (
-        company_backtest_results_df[TURNOVER_COLUMN]
-        * convert_basis_points_to_decimal(TRANSACTION_COST_BASIS_POINTS)
-    )
+    company_backtest_results_df[TRANSACTION_COST_COLUMN] = company_backtest_results_df[
+        TURNOVER_COLUMN
+    ] * convert_basis_points_to_decimal(TRANSACTION_COST_BASIS_POINTS)
     # Deduct the transaction cost from the gross return to calculate the net return after trading costs.
     company_backtest_results_df[NET_RETURN_COLUMN] = (
         company_backtest_results_df[GROSS_RETURN_COLUMN]
@@ -532,7 +537,9 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
 
             # Hit rate is the proportion of active company days for which the position direction matched the following return direction.
             hit_rate = (
-                correct_active_company_days / total_active_company_days if total_active_company_days else 0.0
+                correct_active_company_days / total_active_company_days
+                if total_active_company_days
+                else 0.0
             )
 
             print(
@@ -572,7 +579,7 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
                 trading_days=len(daily_backtest_results_df),
                 transaction_cost_bps=TRANSACTION_COST_BASIS_POINTS,
             )
-            # Use `.3f` to display to 3 decimal places 
+            # Use `.3f` to display to 3 decimal places
             print(
                 f"Annualised Sharpe ratio: "
                 f"{backtest_result[SHARPE_RATIO_COLUMN]:.3f}"
@@ -597,7 +604,9 @@ def evaluate_model_backtests(daily_signal_panels_by_model):
     )
 
 
-def print_single_model_daily_signal(model_daily_signal_panel_df: pd.DataFrame, model_name: str) -> None:
+def print_single_model_daily_signal(
+    model_daily_signal_panel_df: pd.DataFrame, model_name: str
+) -> None:
     """Print a summary and sample of company day signals for one model condition."""
 
     matched_signal_mask = model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].notna()
@@ -624,6 +633,7 @@ def print_single_model_daily_signal(model_daily_signal_panel_df: pd.DataFrame, m
         .head(10)
         .to_string(index=False)
     )
+
 
 def print_turnover_calculation_to_console(
     company_backtest_results_df: pd.DataFrame,
@@ -731,9 +741,7 @@ def create_backtest_table_figure(backtest_results_df) -> pd.DataFrame:
             STRATEGY_COLUMN: STRATEGY_REPORT_COLUMN,
             SHARPE_RATIO_COLUMN: SHARPE_RATIO_REPORT_COLUMN,
             HIT_RATE_COLUMN: HIT_RATE_REPORT_COLUMN,
-            CUMULATIVE_GROSS_RETURN_COLUMN: (
-                CUMULATIVE_GROSS_RETURN_REPORT_COLUMN
-            ),
+            CUMULATIVE_GROSS_RETURN_COLUMN: (CUMULATIVE_GROSS_RETURN_REPORT_COLUMN),
             TRANSACTION_COST_DRAG_COLUMN: TRANSACTION_COST_DRAG_REPORT_COLUMN,
             CUMULATIVE_RETURN_COLUMN: CUMULATIVE_RETURN_REPORT_COLUMN,
             ACTIVE_TRADES_COLUMN: ACTIVE_TRADES_REPORT_COLUMN,
