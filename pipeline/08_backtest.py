@@ -328,6 +328,8 @@ def create_daily_sentiment_signal_panels(
             how="left",
             validate="one_to_one",
         )
+        # Print the merged data before missing scores are replaced with zero
+        print_single_model_daily_signal(model_daily_signal_panel_df, model_name)
 
         # A missing score means no headline signal exists for that company-date, so the position remains zero
         model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN] = (
@@ -358,9 +360,6 @@ def create_daily_sentiment_signal_panels(
                 ]
             ]
         )
-        # Print the merged data before missing scores are replaced with zero
-        print_single_model_daily_signal(model_daily_signal_panel_df, model_name)
-
     return daily_signal_panels_by_model, pd.concat(
         daily_signal_dataframes,
         ignore_index=True,
