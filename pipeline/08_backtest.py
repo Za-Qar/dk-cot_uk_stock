@@ -163,11 +163,15 @@ def calculate_backtest_confidence_intervals(
 ) -> BacktestConfidenceIntervals:
     """Estimate Sharpe and hit-rate intervals using five-day blocks."""
 
-    # Create a reproducible random-number generator using the supplied seed.
+    # Use the supplied seed so that rerunning the bootstrap produces the same samples.
     random_generator = np.random.default_rng(seed)
+    # Record how many trading days each bootstrap sample must contain.
     trading_day_count = len(daily_backtest_results_df)
+    # Calculate how many five-day blocks are needed to recreate that number of days
     bootstrap_block_count = int(np.ceil(trading_day_count / BLOCK_LENGTH))
+    # Restrict block starts so that every selected block remains inside the dataset
     maximum_block_start_index = trading_day_count - BLOCK_LENGTH + 1
+    # Store the Sharpe ratio and hit rate calculated from each bootstrap sample.
     bootstrap_sharpe_ratio_values = []
     bootstrap_hit_rate_values = []
 
@@ -182,10 +186,10 @@ def calculate_backtest_confidence_intervals(
         )
         bootstrap_sample_indices = np.concatenate(
             [
-                np.arange(start_index, start_index + BLOCK_LENGTH)
+                np.arange(start_index, start_index + BLOCK_LENGTH) # Create the row positions for a block of five consecutive trading days, beginning at the randomly selected starting row
                 for start_index in bootstrap_block_start_indices
             ]
-        )[:trading_day_count]
+        )[:trading_day_count] # Trim array so the bootstrap sample contains the same number of days as the original dataset
         bootstrap_sample_df = daily_backtest_results_df.iloc[bootstrap_sample_indices]
         bootstrap_sharpe_ratio_values.append(
             calculate_annualised_sharpe_ratio(bootstrap_sample_df[NET_RETURN_COLUMN])
@@ -199,7 +203,7 @@ def calculate_backtest_confidence_intervals(
             else 0.0
         )
 
-    # Use the 2.5th and 97.5th percentiles as the limits of each 95% percentile-bootstrap confidence interval.
+    # Use the 2.5th and 97.5th percentiles as the limits of each 95% percentile-bootstrap confidence interval
     # NumPy quantile documentation: https://numpy.org/doc/stable/reference/generated/numpy.quantile.html
     return BacktestConfidenceIntervals(
         Sharpe_ci_lower=np.quantile(bootstrap_sharpe_ratio_values, 0.025),
@@ -210,7 +214,7 @@ def calculate_backtest_confidence_intervals(
 
 
 def load_FinBERT_and_DK_CoT_predictions() -> pd.DataFrame:
-    """Load FinBERT and DK-CoT predictions under one shared schema."""
+    """Load and combine FinBERT and DK-CoT predictions into one dataframe."""
 
     finbert_predictions_df = pd.read_csv(
         PROCESSED_DATA_DIR / FINBERT_PREDICTIONS_CSV_FILE_NAME
@@ -229,10 +233,10 @@ def create_daily_sentiment_signal_panels(
     headlines_aligned_prices_df,
     yfinance_prices_df,
     model_predictions_df,
-) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
-    """Aggregate headline sentiment and build one daily panel per model."""
+):
+    """Average sentiment by company and trading day, then create one daily dataset for each model."""
 
-    # Retain the identifiers needed to connect every prediction to its company and aligned trading date.
+    # Retain the identifiers needed to connect every prediction to its company and aligned trading date
     headline_trade_dates_df = headlines_aligned_prices_df[
         [HEADLINE_ID_COLUMN, TICKER_COLUMN, TRADE_DATE_COLUMN]
     ]
@@ -242,7 +246,7 @@ def create_daily_sentiment_signal_panels(
         how="inner",
         validate="many_to_one",
     )
-    # Convert each sentiment label into a directional score: negative=-1, neutral=0 and positive=1.
+    # Convert each sentiment label into a score: negative=-1, neutral=0 and positive=1
     sentiment_scored_predictions_df[SENTIMENT_SCORE_COLUMN] = (
         sentiment_scored_predictions_df[LABEL_PRED_COLUMN].map(SENTIMENT_SCORES)
     )
@@ -255,15 +259,19 @@ def create_daily_sentiment_signal_panels(
             MODEL_ID_COLUMN,
             KNOWLEDGE_LEVEL_COLUMN,
         ],
-        as_index=False,
+        as_index=False, # Keep TRADE_DATE_COLUMN, TICKER_COLUMN, MODEL_ID_COLUMN and KNOWLEDGE_LEVEL_COLUMN as dataframe columns rather than index levels in the resulting dataframe
+        # https://stackoverflow.com/questions/51866908/difference-between-as-index-false-and-reset-index-in-pandas-groupby
     ).agg(
-        sentiment_score=(SENTIMENT_SCORE_COLUMN, "mean"),
+        sentiment_score=(SENTIMENT_SCORE_COLUMN, "mean"), # Create an output column named SENTIMENT_SCORE_COLUMN. The value is the "mean" of SENTIMENT_SCORE_COLUMN within each group. For example, scores of [1, 1, -1] produce a mean score of 0.33. Later on, `np.sign()`` will convert that into a positive position considering a zero mean becomes neutral, a positive mean becomes positive and a negative number mean becomes a negative trading position.
     )
 
+    # Work on a copy so the original price DataFrame remains unchanged
     prices_with_forward_returns_df = yfinance_prices_df.copy()
+    # Convert the date strings to datetime values so they can be sorted later on
     prices_with_forward_returns_df[DATE_COLUMN] = pd.to_datetime(
         prices_with_forward_returns_df[DATE_COLUMN]
     )
+    # Sort each company price by date so that the `.shift(-1)` can get the next trading day's opening price
     prices_with_forward_returns_df = prices_with_forward_returns_df.sort_values(
         [TICKER_COLUMN, DATE_COLUMN]
     )
@@ -273,11 +281,26 @@ def create_daily_sentiment_signal_panels(
     prices_with_forward_returns_df[NEXT_OPEN_COLUMN] = (
         prices_with_forward_returns_df.groupby(TICKER_COLUMN)[OPEN_COLUMN].shift(-1)
     )
+
+    # Calculate the return between two opening prices (current and next). For example, a move from £100 to £102 will be as follows:
+    # Opening price for day 10 = £100
+    # Openning price for day 12 = £102
+    # Price difference = £2
+    # (102/100) - 1 = 0.02
+    # The above value is then later on converted into a percentage of 2% for display purposes. The 2% value is the company's share price between two opening prices that are consecutive.
+    # The example will be used by the backtest to measure the trading result:
+    # - Long position: 1 × 0.02 = 0.02, an 2% gross return.
+    # - Short position: -1 × 0.02 = -0.02, a 2% gross loss.
+    # As for the reason why there is a `1` being subtracted. This was found when an issue faced when the price ratio equals one (as in it has not changed). So the `-1` is to cater for that and provide a value of `0` when there is no price change.
+    # This was tricky initially but the following source was used to make this work (see "Example 1.6 (Simple return calculation)" from the source specifically) (Zivot, 2022):
+    # https://bookdown.org/compfinezbook/introFinRbook/Return-Calculations.html
+    # Zivot, E. (2022) Introduction to computational finance and financial econometrics with R. Available at: https://bookdown.org/compfinezbook/introFinRbook/Return-Calculations.html (Accessed: 20 August 2026).
     prices_with_forward_returns_df[FORWARD_RETURN_COLUMN] = (
         prices_with_forward_returns_df[NEXT_OPEN_COLUMN]
         / prices_with_forward_returns_df[OPEN_COLUMN]
         - 1
     )
+    # Convert the datetime values into the same date-string format used by the sentiment trade dates so that the two datasets can be merged
     prices_with_forward_returns_df[DATE_COLUMN] = prices_with_forward_returns_df[
         DATE_COLUMN
     ].dt.strftime(PD_DATE_FORMAT)
@@ -285,7 +308,9 @@ def create_daily_sentiment_signal_panels(
     daily_signal_panels_by_model = {}
     daily_signal_dataframes = []
 
+    # Loop to repeat the process for FinBERT and each DK-CoT knowledge condition.
     for model_name, model_id, knowledge_level in MODEL_VARIANTS:
+        # Select the daily sentiment scores belonging to the current model condition
         model_daily_sentiment_scores_df = daily_sentiment_scores_df.loc[
             (daily_sentiment_scores_df[MODEL_ID_COLUMN] == model_id)
             & (daily_sentiment_scores_df[KNOWLEDGE_LEVEL_COLUMN] == knowledge_level),
@@ -299,17 +324,23 @@ def create_daily_sentiment_signal_panels(
             validate="one_to_one",
         )
 
-        # A missing score means no headline signal exists for that company-date, so the position remains zero.
+        # A missing score means no headline signal exists for that company-date, so the position remains zero
         model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN] = (
             model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].fillna(0.0)
         )
+        # Convert into a trading position from the mean value using `np.sign`.
+        # https://numpy.org/doc/stable/reference/generated/numpy.sign.html
         model_daily_signal_panel_df[POSITION_COLUMN] = np.sign(
             model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN]
         ).astype(int)
+        # Add the model identifier to each row
         model_daily_signal_panel_df[MODEL_ID_COLUMN] = model_id
+        # Add the model knowledge condition to each row
         model_daily_signal_panel_df[KNOWLEDGE_LEVEL_COLUMN] = knowledge_level
+        # Store the complete company day dataset under its display name. The values here will be later passed to the backtest for each model condition
         daily_signal_panels_by_model[model_name] = model_daily_signal_panel_df
 
+        # Include the columns needed for the daily signals output
         daily_signal_dataframes.append(
             model_daily_signal_panel_df[
                 [
@@ -322,25 +353,68 @@ def create_daily_sentiment_signal_panels(
                 ]
             ]
         )
+        # Print the merged data before missing scores are replaced with zero
+        print_single_model_daily_signal(model_daily_signal_panel_df, model_name)
 
     return daily_signal_panels_by_model, pd.concat(
         daily_signal_dataframes,
         ignore_index=True,
     )
 
+def print_single_model_daily_signal(model_daily_signal_panel_df: pd.DataFrame, model_name: str) -> None:
+    """Print a summary and sample of company day signals for one model condition."""
+
+    matched_signal_mask = model_daily_signal_panel_df[SENTIMENT_SCORE_COLUMN].notna()
+
+    print(
+        f"\n---------------------------------Daily company-day signal preview:---------------------------------"
+    )
+    print(f"\nDaily signal panel for {model_name}")
+    print(f"Total company day rows: {len(model_daily_signal_panel_df):,}")
+    print(f"Rows with sentiment signals: {matched_signal_mask.sum():,}")
+
+    print(
+        model_daily_signal_panel_df.loc[
+            matched_signal_mask,
+            [
+                DATE_COLUMN,
+                TICKER_COLUMN,
+                OPEN_COLUMN,
+                NEXT_OPEN_COLUMN,
+                FORWARD_RETURN_COLUMN,
+                SENTIMENT_SCORE_COLUMN,
+            ],
+        ]
+        .head(10)
+        .to_string(index=False)
+    )
 
 def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
     """Apply one strategy to a model's daily company-level signals."""
 
+    # Create a new dataframe with sorted rows by date for the position turnover calculations. A copy is done as to not mutate the dataframe coming from the parameter
     company_backtest_results_df = daily_signal_panel_df.copy().sort_values(
         [TICKER_COLUMN, DATE_COLUMN]
     )
 
     # Long-only uses positive signals and otherwise remains in cash. Long-short also takes a short position for negative signals.
+    # Replace the values below zero with zero using `clip(lower=0)` for LONG_ONLY because negative positions are prohibited. This means that a negative number signal (like, -1) will be retained as cash of 0.
+    # https://pandas.pydata.org/docs/reference/api/pandas.Series.clip.html
+
+    # In a nutshell:
+    # - long-only: negative signals become cash
+    # - long-short: negative signals become short positions.
+    # https://www.investor.gov/introduction-investing/investing-basics/how-stock-markets-work/stock-purchases-and-sales-long-and
+
+    # The implementation here is also backed up by Suenot (no date):
+    # https://github.com/suenot/061-llm-alpha-mining
+    # Specifically the `04: Backtesting LLM Alphas` section in the README file
+    # suenot (no date) 061-llm-alpha-mining [source code]. GitHub. Available at: https://github.com/suenot/061-llm-alpha-mining (Accessed: 20 August 2026).
     if strategy == LONG_ONLY:
         company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
             company_backtest_results_df[POSITION_COLUMN].clip(lower=0)
         )
+    # Long-short permits both positive and negative positions, so retain
     elif strategy == LONG_SHORT:
         company_backtest_results_df[STRATEGY_POSITION_COLUMN] = (
             company_backtest_results_df[POSITION_COLUMN]
@@ -354,11 +428,13 @@ def run_backtest_strategy(daily_signal_panel_df, strategy) -> pd.DataFrame:
         STRATEGY_POSITION_COLUMN,
     ] = 0
 
-    # Turnover is the absolute change from the previous position. Entering or leaving a position has turnover one; reversing from short to long has turnover two.
+    # Get the previous trading position separately for each company
     previous_strategy_position = company_backtest_results_df.groupby(TICKER_COLUMN)[
         STRATEGY_POSITION_COLUMN
-    ].shift(1)
+    ].shift(1) # Use `shift(1)` to move each company’s positions down by one row so the current position can be compared with its position on the previous available trading date
+    # The first position for each company has no previous value, so assume that the strategy started in cash with a position of zero
     previous_strategy_position = previous_strategy_position.fillna(0)
+    # Calculate how much the position changed. The absolute value makes both entries and exits positive. For example, 0 to 1 gives turnover of 1, 1 to 0 gives 1, and -1 to 1 gives 2
     company_backtest_results_df[TURNOVER_COLUMN] = (
         company_backtest_results_df[STRATEGY_POSITION_COLUMN]
         - previous_strategy_position

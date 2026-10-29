@@ -433,7 +433,7 @@ def main():
     print(
     results_df[
             [MODEL_COLUMN, ACCURACY_COLUMN, MACRO_F1_COLUMN]
-        ].to_string(index=False, float_format=lambda value: f"{value:.3f}")
+        ].to_string(index=False, float_format=lambda value: f"{value:.4f}")
     )
 
     # Get the row containing FinBERT's classification results
